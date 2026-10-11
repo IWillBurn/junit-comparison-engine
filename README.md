@@ -1,6 +1,7 @@
-# Движок сравнения реализаций для JUnit: три прототипа
+# Вариант `jupiter-descriptors`: дескрипторы Jupiter
 
-Один тест прогоняется на нескольких реализациях. Каждая реализация — отдельный лист **под** набором аргументов:
+Движок сравнения реализаций для JUnit. Один тест прогоняется на нескольких реализациях. Каждая реализация —
+отдельный лист **под** набором аргументов:
 
 ```
 MulTest
@@ -16,149 +17,175 @@ MulTest
    └─ Buggy ✘ expected: <20> but was: <21>
 ```
 
-Все три варианта — свой `TestEngine` поверх настоящего Jupiter. Пользовательский API ([API.md](API.md)) и
-примеры у них одинаковые, а реализации написаны независимо друг от друга.
+Это один из трёх вариантов движка. У всех вариантов одинаковые пользовательский API ([API.md](API.md)) и примеры.
+Обзор вариантов и их сравнение — в ветке [`main`](https://github.com/IWillBurn/junit-comparison-engine/tree/main).
 
-## Ветки
+## Как устроен
 
-Каждый вариант лежит в ветке со своим именем:
+- Свой `TestEngine` `comparison-tests` вызывает настоящее обнаружение Jupiter (`JupiterTestEngine.discover`) для
+  своего id. Из полученного дерева он берёт только классы с `@ComparisonTest`.
+- В этом дереве Jupiter он заменяет узлы методов своими подклассами внутренних дескрипторов Jupiter:
+  - `@Test` → контейнер метода, под ним заранее известные листья `Good`, `Buggy`;
+  - `@ParameterizedTest` (и любой `@TestTemplate`) → подкласс `TestTemplateTestDescriptor`. Источник аргументов
+    обрабатывает сам junit-jupiter-params, но на каждый вызов создаётся контейнер набора, а в нём лист на каждую
+    реализацию;
+  - лист — подкласс `TestMethodTestDescriptor`, то есть обычный узел теста Jupiter: новый экземпляр класса,
+    `@BeforeEach`, расширения, тест, `@AfterEach`. Добавлен только `ParameterResolver` реализации.
+- Выполняет дерево исполнитель Jupiter (`JupiterTestEngine.execute`), события шлёт сам Jupiter. Вложенного
+  Launcher, дерева-зеркала и перекладывания событий нет.
+- Фильтр прячет эти классы от обычного `junit-jupiter`, поэтому каждый тест выполняется один раз.
+- Два класса лежат в чужом пакете `org.junit.jupiter.engine.descriptor` (split package): только так доступны
+  package-private конструкторы Jupiter.
 
-| Ветка | Идея | Как устроен |
-|---|---|---|
-| `main` | общая база | `API.md`, `examples`, общий `pom.xml`. Сама по себе не собирается |
-| [`class-template`](https://github.com/IWillBurn/junit-comparison-engine/tree/class-template) | скрытый `@ClassTemplate` | `@ComparisonTest` превращает класс в шаблон класса Jupiter: на каждую реализацию отдельный вызов класса. Движок запускает Jupiter во вложенном Launcher и переносит его события на своё дерево |
-| [`generated-carrier`](https://github.com/IWillBurn/junit-comparison-engine/tree/generated-carrier) | генерация носителя | Во время запуска ByteBuddy генерирует подкласс теста: на каждый метод `@Nested`-класс (`@ParameterizedClass` для `@ParameterizedTest`), в нём `@Test` на каждую реализацию. Его выполняет Jupiter во вложенном Launcher |
-| [`jupiter-descriptors`](https://github.com/IWillBurn/junit-comparison-engine/tree/jupiter-descriptors) | дескрипторы Jupiter | Движок вызывает обнаружение Jupiter и заменяет узлы методов подклассами внутренних дескрипторов Jupiter. Дерево выполняет исполнитель Jupiter |
+Код движка (`comparison-engine/src/main`): ≈ 1100 строк, без комментариев и пустых строк ≈ 840.
 
-## Структура
-
-В `main`:
-
-- `API.md` — контракт для пользователя, общий для всех вариантов, и отличия вариантов.
-- `examples/` — примеры для запуска в IDE. Написаны только против `API.md`, одинаковые во всех ветках.
-- `pom.xml` — общий каркас: JDK 21, JUnit 6.1.3, модули.
-
-Каждая ветка варианта добавляет:
-
-- `comparison-engine/` — библиотека: `@ComparisonTest` и `TestEngine`;
-- `verification/` — автоматические проверки примеров через Launcher API;
-- свой `README.md` вместо этого: устройство, запуск, особенности и цена варианта.
-
-Сравнить два варианта:
-
-```
-git diff class-template jupiter-descriptors -- comparison-engine
-```
+Surefire называет листья `MulTest.mul(int, int, int, Calc)[2][2]` и `MulTest.mulFourByFive(Calc)[2]` (номер набора,
+номер реализации). Фильтр `-Dtest=MulTest#mul` работает.
 
 ## Запуск
 
-Нужны JDK 21 и Maven 3.9+. В ветке варианта из корня:
+Нужны JDK 21 и Maven 3.9+. JUnit 6.1.3. Из корня:
 
 ```
 mvn test
 ```
 
 В `examples` падения `Buggy` задуманы, там стоит `testFailureIgnore`. Тесты `verification` должны быть зелёными.
-В `main` сборка не пройдёт: там нет модулей `comparison-engine` и `verification`.
 
 ## IntelliJ IDEA
 
-Откройте корневой `pom.xml` ветки варианта как проект и запускайте классы из `examples/src/test/java/examples`:
+Откройте корневой `pom.xml` как проект и запускайте классы из `examples/src/test/java/examples`:
 
 - **`MulTest`** — дерево выше: `@ParameterizedTest` и `@Test`, падает только `Buggy` на 4 × 5.
-- **`LifecycleTest`** — в выводе каждого листа свои `@BeforeEach`/`@AfterEach` и новый экземпляр (#1..#6);
-  `@BeforeAll` выполняется один раз.
+- **`LifecycleTest`** — в выводе каждого листа свои `@BeforeEach`/`@AfterEach` и новый экземпляр (#1..#6).
+  `@BeforeAll` выполняется один раз. Порядок естественный: `Good`, `Buggy` для каждого набора.
 - **`PlainLifecycleTest`** — тот же класс в обычном Jupiter, для сравнения.
 
-Любой узел (лист, набор аргументов, метод) перезапускается из дерева результатов, работает и **Rerun Failed
-Tests**: IDE передаёт UniqueId узлов.
+Любой узел (лист, набор аргументов, метод) перезапускается из дерева результатов, работает и **Rerun Failed Tests**
+(IDE передаёт UniqueId узлов). Перезапуск **точный**: выполняются только выбранные листья.
+
+Проверено собственным раннером IntelliJ (`JUnitStarter -junit6`, `junit6-rt.jar` из IDEA 2025.2.6.3, всё на одном
+classpath): запуск классов и метода `mul`, перезапуск набора `[2]` и двух упавших листьев файлом UniqueId, как это
+делает IDE. В сообщениях `##teamcity` ожидаемое дерево, ни одного потерянного или `ignored` листа, у листьев
+`locationHint` ведёт в метод теста.
 
 При запуске одного `LifecycleTest` IntelliJ показывает строку `@BeforeAll` в конце вывода, хотя выполняется она
-первой. Так во всех вариантах, объяснение — в комментарии `LifecycleTest`.
+первой. Объяснение — в комментарии `LifecycleTest`.
 
-## Сравнение вариантов
+## Модуль `verification`
 
-Во всех трёх вариантах одинаково:
+`ComparisonEngineTest` запускает примеры через Launcher API, как IDE. Проверяется:
 
-- дерево `класс > метод > [набор] > реализация`;
-- на каждый лист создаётся новый экземпляр класса со своими `@BeforeEach`/`@AfterEach`, конструктор получает
-  реализацию своего листа;
-- `@BeforeAll` выполняется один раз на класс;
-- обычный Jupiter не выполняет сравнительные классы второй раз;
-- `@TestFactory` показан пропущенным листом с причиной;
-- у движка свой корень дерева. Сравнительные классы выполняются отдельно от обычных, и общий ресурс в корневом
-  `Store` создаётся дважды.
+- дерево `MulTest` со статусами и уникальные строки CI на каждый лист;
+- в `LifecycleTest` `@BeforeAll` выполняется 1 раз, а `@BeforeEach` и новый экземпляр — на каждый из 6 листов;
+- запуск одного метода;
+- перезапуск листьев и набора аргументов по UniqueId;
+- обычный Jupiter не выполняет сравнительные классы повторно, а Jupiter внутри движка не выполняет повторно
+  обычные классы того же запуска;
+- соблюдается порядок событий: родитель стартует раньше детей и заканчивается после них.
 
-| # | Критерий | `class-template` | `generated-carrier` | `jupiter-descriptors` |
-|---|---|---|---|---|
-| 1 | Порядок листьев | сначала все `Good`, потом все `Buggy` | естественный | естественный |
-| 2 | Источник аргументов | N раз, у каждой реализации свои объекты | 1 раз, объекты общие | 1 раз, объекты общие |
-| 3 | `TestInfo.getDisplayName()` листа | `[1] 2, 3, 6`, одинаково для всех | `Good` / `Buggy` | `Good` / `Buggy` |
-| 4 | Метод и класс, которые видят расширения | настоящие | сгенерированные | настоящие |
-| 5 | Перезапуск одного листа | грубый | точный | точный |
-| 6 | `@ParameterizedClass` | ошибка | работает | работает |
-| 7 | `@TestInstance(PER_CLASS)` | ошибка | работает | работает |
-| 8 | `@Nested` | пропуск, исправимо | пропуск, исправимо | работает |
-| 9 | `@RepeatedTest` и другие `@TestTemplate` | работают | пропуск | работают |
-| 10 | Фильтр по тегам | не работает | работает на уровне метода | как в Jupiter |
-| 11 | Строка теста в Surefire/CI | `mul(…)[2][Buggy]` | `mul(…)[2][Buggy]` | `mul(…)[2][2]` |
-| 12 | Ошибочный `@ComparisonTest` | класс молча пропадает | падает только этот класс | не выполняется ни один сравнительный класс |
-| 13 | API JUnit | публичный, EXPERIMENTAL и недокументированное поведение | публичный и EXPERIMENTAL | INTERNAL, работает только на 6.1.3 |
-| 14 | Ограничения окружения | нет | на module path нужен `opens`, зависимость ByteBuddy | нужен один загрузчик классов, module path не работает |
-| 15 | Как выполняется | вложенный Launcher | вложенный Launcher | исполнитель Jupiter напрямую |
-| 16 | Код движка | 675 строк | 1542 строки | 1120 строк |
+`VariantPropertiesTest` фиксирует одним списком событий то, чем различаются варианты: когда выполняются
+`@BeforeAll` и источник аргументов, порядок листьев, какую реализацию получает конструктор и что видит `TestInfo`.
+Здесь список такой:
 
-1. **Порядок листьев.** В `class-template` каждая реализация — отдельный вызов шаблона класса, поэтому Jupiter
-   проходит весь класс с `Good`, а потом весь класс с `Buggy`. Контейнеры метода и набора остаются открытыми до конца
-   класса, и в IDE их время завышено. В остальных вариантах для каждого набора выполняются `Good` и `Buggy`, потом
-   следующий набор.
-2. **Источник аргументов.** В `class-template` источник вычисляется заново для каждой реализации: дорогой источник
-   обходится в N раз дороже, а случайный незаметно даст реализациям разные данные. В остальных вариантах источник
-   вычисляется один раз, но объекты общие: если `Good` изменит изменяемый аргумент, `Buggy` увидит изменение.
-3. **`TestInfo`.** В `class-template` лист в IDE — копия в дереве движка, а Jupiter выполняет узел набора. Поэтому у
-   всех реализаций одно имя, и расширение, которое пишет отчёт или снимок по имени теста, их не различит. В
-   остальных вариантах лист — настоящий узел Jupiter.
-4. **Метод и класс для расширений** (`getTestMethod()` / `getTestClass()`). В `generated-carrier` это `Good(Calc)` и
-   `MulTest$$Comparison$1$mul`, аннотации метода переезжают на сгенерированный класс, а порядок и имена методов
-   вычисляет сам движок. Пострадают расширения, которые опираются на имя метода или класса.
-5. **Перезапуск одного листа** (Rerun Failed Tests). В `class-template` показывается только выбранный лист, но
-   выполняется весь его набор для всех реализаций, лишние результаты отбрасываются. В остальных вариантах
-   выполняется ровно выбранный лист. Исключение в `generated-carrier`: под `@ParameterizedClass` метод выполняется во
-   всех вызовах класса.
-6. **`@ParameterizedClass`.** В `class-template` шаблон класса уже занят реализациями. В остальных вариантах
-   получается дерево `класс > [вызов] > метод > [набор] > реализация`.
-7. **`PER_CLASS`.** В `class-template` все реализации делили бы один экземпляр, поэтому класс падает с ошибкой. В
-   остальных вариантах экземпляр один на весь класс, реализацию получают методы, а конструктор нет.
-8. **`@Nested`.** В `class-template` исправляется ещё одним уровнем в дереве движка, но `@BeforeAll` вложенного
-   класса будет выполняться на каждую реализацию. В `generated-carrier` — рекурсивной генерацией.
-9. **Шаблоны методов** (`@RepeatedTest`, `@CartesianTest` из JUnit Pioneer, свои `@TestTemplate`). В
-   `class-template` и `jupiter-descriptors` их выполняет сам Jupiter. В `generated-carrier` повторение переносится с
-   метода на сгенерированный класс, а аналог уровня класса есть только у `@ParameterizedTest`. Остальные шаблоны
-   пришлось бы реализовывать заново, каждый отдельно.
-10. **Теги.** В `class-template` у узлов дерева движка нет тегов: `includeTags` отбрасывает всё, `excludeTags`
-    ничего не исключает. В остальных вариантах фильтр отбирает метод целиком.
-11. **Строка в Surefire/CI.** В `jupiter-descriptors` её строит сам Jupiter, и вместо имени реализации стоит число:
-    `[2][2]` значит «набор 2, реализация 2».
-12. **Ошибочный `@ComparisonTest`** (пустой список, реализация без конструктора без аргументов). В `class-template`
-    класс с `@ComparisonTest({})` исчезает из результатов без ошибки. В `jupiter-descriptors` это критическая ошибка
-    обнаружения, и в запуске не выполняется ни один сравнительный класс.
-13. **API JUnit.** `class-template` опирается на EXPERIMENTAL `@ClassTemplate` и на недокументированный порядок
-    «фильтры до `prune()`»: только благодаря ему движок видит методы шаблона класса. `generated-carrier` использует
-    EXPERIMENTAL `@ParameterizedClass` и пару неформальных соглашений. `jupiter-descriptors` использует около 15
-    INTERNAL-типов Jupiter, два его класса лежат в пакете Jupiter, около 60 строк скопировано из Jupiter.
-14. **Окружение.** `generated-carrier` создаёт класс в пакете пользователя, в именованном модуле этот пакет должен
-    быть открыт. `jupiter-descriptors` требует, чтобы JUnit и движок загружал один загрузчик классов: так в Surefire,
-    IntelliJ и `java -cp`, но не в `console-standalone --class-path`.
-15. **Как выполняется.** `class-template` и `generated-carrier` запускают Jupiter во вложенном Launcher и переносят
-    его события на своё дерево. В `class-template` Jupiter обнаруживает классы 3 раза. `jupiter-descriptors`
-    встраивает свои узлы прямо в дерево Jupiter.
-16. **Код движка** — без тестов и примеров.
+```
+@BeforeAll
+source
+param 1 Good, constructor: Good, TestInfo: Good
+param 1 Buggy, constructor: Buggy, TestInfo: Buggy
+param 2 Good, constructor: Good, TestInfo: Good
+param 2 Buggy, constructor: Buggy, TestInfo: Buggy
+plain Good, constructor: Good, TestInfo: Good
+plain Buggy, constructor: Buggy, TestInfo: Buggy
+```
 
-Итог:
+`ExtraFeaturesTest` подтверждает то, что вариант умеет сверх минимума: `@ParameterizedClass`, `@RepeatedTest`,
+`@Nested`, автоматически закрываемые аргументы, `@TestInstance(PER_CLASS)`, пропуск `@TestFactory` с причиной,
+перезапуск листьев внутри `@ParameterizedClass` и `@Nested`, `IterationSelector`, лист вместе со своим классом.
 
-- **`class-template`** самый простой и работает на публичном API. Но порядок, источник и `TestInfo` (пункты 1–3) в
-  нём не исправить.
-- **`generated-carrier`** закрывает пункты 1–3. Цена — расширения видят сгенерированный код, а каждый шаблон метода,
-  кроме `@ParameterizedTest`, нужно поддерживать отдельно.
-- **`jupiter-descriptors`** умеет больше всех и для расширений выглядит как обычный Jupiter. Цена — внутренний API
-  Jupiter и привязка к JUnit 6.1.3.
+Классы из `fixtures` запускаются только из этих тестов.
+
+## Особенности варианта
+
+### Как вариант справляется с проблемами `class-template`
+
+1. **`TestInfo` и `ExtensionContext` видят лист.** `TestInfo.getDisplayName()` возвращает `Good` или `Buggy`.
+   Родитель контекста листа — контекст набора аргументов (`[2] 4, 5, 20`), выше — метод и класс, как в дереве.
+2. **Источник аргументов вычисляется один раз.** Его выполняет сам junit-jupiter-params внутри Jupiter, а
+   реализации одного набора получают одни и те же аргументы. Обратная сторона: это **одни и те же объекты**.
+   Если `Good` изменит изменяемый аргумент, `Buggy` увидит изменение. Аргументы с `AutoCloseable` закрываются
+   один раз, после последней реализации набора.
+3. **Порядок естественный.** Для каждого набора выполняются `Good`, потом `Buggy`, затем следующий набор.
+   Контейнеры закрываются сразу после своих листьев, их время не завышено.
+
+Кроме того:
+
+- **`@ParameterizedClass` сочетается.** Уровень реализации — самый нижний, поэтому Jupiter сам копирует узлы
+  методов в каждый вызов класса. Для этого у наших узлов есть `withUniqueId`. Конструктор получает и аргумент
+  класса, и реализацию.
+- `@BeforeAll` выполняется один раз на класс.
+- `@TestInstance(PER_CLASS)` работает, но экземпляр один на все листья и создаётся раньше листьев. Поэтому
+  конструктор реализацию получить не может: с параметром `Calc` класс падает с `No ParameterResolver registered`.
+  Методы реализацию получают.
+- Работают `@RepeatedTest` и любой `@TestTemplate`, а также `@Nested`. Конструктор внешнего класса в `@Nested`-тесте
+  реализацию не получает: внешний экземпляр Jupiter создаёт без расширений листа.
+- `@Tag`-фильтр работает как в Jupiter: он отбирает методы целиком, листья наследуют теги метода и класса.
+- `@TestFactory` не поддерживается: в дереве это пропущенный лист с причиной, метод не выполняется.
+- Перезапуск по UniqueId точный. Jupiter не знает сегмент `[implementation:X]`, поэтому движок переводит селекторы:
+  - у листа `@ParameterizedTest` сегмент переименовывается в `test-template-invocation`. Дальше лист и его набор
+    отбирает фильтр самого Jupiter (`DynamicDescendantFilter`);
+  - у листа `@Test` в Jupiter уходит UniqueId метода, а движок запоминает имена реализаций. Если тот же метод целиком
+    выбран другим селектором (класс, метод), выполняются все листья. Это выясняет второе, «тихое» обнаружение
+    Jupiter по остальным селекторам. Оно нужно только в таком смешанном запросе.
+
+### Используемый внутренний API (JUnit 6.1.3)
+
+Всё перечисленное помечено `@API(status = INTERNAL)` или недоступно извне пакета. Без указания пакета —
+`org.junit.jupiter.engine.descriptor`.
+
+| Тип | Что используется |
+|---|---|
+| `org.junit.jupiter.engine.JupiterTestEngine` | `new`, `discover(…)`, `execute(…)` |
+| `JupiterEngineDescriptor` | приведение типа, `getConfiguration()`; корень для исполнителя Jupiter |
+| `JupiterTestDescriptor` | package-private конструктор `(UniqueId, String, TestSource, JupiterConfiguration)` и package-private поле `configuration` (через split package); переопределяются `prepare`, `execute`, `after`, `cleanUp`, `shouldBeSkipped`, `withUniqueId`, `getLegacyReportingIndex` |
+| `TestMethodTestDescriptor` | package-private конструктор `(UniqueId, String, Class, Method, JupiterConfiguration, VoidMethodInterceptorCall)` (через split package); `SEGMENT_TYPE`; переопределяются `populateNewExtensionRegistry`, `withUniqueId`, `getLegacyReportingIndex`, `getExclusiveResources` |
+| `TestTemplateTestDescriptor` | публичный конструктор, свой `prepare` (контекст шаблона); переопределяются `execute`, `withUniqueId`, `getDynamicDescendantFilter`, `mayRegisterTests` |
+| `MethodBasedTestDescriptor` | `getTestClass()`, `getTestMethod()`, `getEnclosingTestClasses()` |
+| `TestTemplateInvocationTestDescriptor` | `SEGMENT_TYPE` |
+| `ClassBasedTestDescriptor`, `ClassTemplateInvocationTestDescriptor`, `TestFactoryTestDescriptor` | проверки `instanceof`, `getTestClass()` |
+| `DynamicDescendantFilter` | `copy(…)`, `test(…)`, `withoutIndexFiltering()` |
+| `AbstractExtensionContext` (package-private класс) | подкласс для контекста набора аргументов (через split package) |
+| `org.junit.jupiter.engine.execution.JupiterEngineExecutionContext` | `extend()…build()`, `getExtensionRegistry()`, `getExtensionContext()`, `getExecutionListener()`, `getConfiguration()`, `getLauncherStoreFacade()` |
+| `org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.ReflectiveInterceptorCall.VoidMethodInterceptorCall` | ссылки `InvocationInterceptor::interceptTestMethod` / `interceptTestTemplateMethod` |
+| `org.junit.jupiter.engine.execution.LauncherStoreFacade` | передаётся в конструктор контекста |
+| `org.junit.jupiter.engine.extension.MutableExtensionRegistry` | `createRegistryFrom(…)`, `registerExtension(Extension, Object)` |
+| `org.junit.jupiter.engine.config.JupiterConfiguration` | передаётся в конструкторы |
+| `org.junit.jupiter.engine.support.JupiterThrowableCollectorFactory` | `createThrowableCollector()` |
+| `org.junit.platform.engine.ExecutionRequest` | `create(…)` с шестью параметрами (`INTERNAL` с 6.0); `getStore()`, `getCancellationToken()` — `EXPERIMENTAL` |
+
+Split package — два класса без логики: `ComparisonLeafDescriptor` (лист) и `ComparisonNodeDescriptor` (контейнер
+набора, пропущенный лист и контекст набора).
+
+### Цена варианта
+
+- **Привязка к версии.** Внутренний API меняется без предупреждения. Код собран и проверен только на 6.1.3, на
+  другой версии возможны `NoSuchMethodError`/`AbstractMethodError`. Каждое обновление JUnit нужно перепроверять.
+- **Один загрузчик классов.** Split package работает, только если JUnit и библиотека загружены одним загрузчиком:
+  Maven Surefire, IntelliJ, `java -cp … ConsoleLauncher`. У `junit-platform-console-standalone --class-path`
+  загрузчики разные. Движок это обнаруживает и сообщает критическую ошибку обнаружения: сравнительные классы не
+  выполняются, остальные движки работают (проверено). На module path не работает совсем.
+- **Строки CI без имени реализации:** `mul(int, int, int, Calc)[2][2]`, `mulFourByFive(Calc)[2]`. Их строит сам
+  Jupiter (`getLegacyReportingName()` и `getLegacyReportingBaseName()` — `final`), а индекс может быть только
+  числом.
+- **Повтор кода Jupiter.** Цикл по провайдерам из package-private `TemplateExecutor` (проверка «0 вызовов» и
+  фильтр) и подготовка вызова (`prepareInvocation`, расширения вызова) повторены в своём коде, около 60 строк. При
+  изменениях в Jupiter они могут разойтись с оригиналом.
+- **Двойное обнаружение.** И `junit-jupiter`, и `comparison-tests` выполняют обнаружение Jupiter по всему запросу.
+  Сканирование classpath удваивается, а предупреждения обнаружения о сравнительных классах приходят от обоих
+  движков. Изредка нужно третье, «тихое» обнаружение (см. перезапуск листа `@Test` выше).
+- **Два движка.** Сравнительные классы выполняются отдельно от обычных: сначала один движок, потом другой. Корневой
+  `ExtensionContext` у них разный, поэтому общий ресурс в корневом `Store` создаётся дважды. Если выбрать только
+  движок `junit-jupiter`, сравнительные классы молча пропадут: их прячет фильтр.
+- **Ошибка в одном `@ComparisonTest`** (пустой `value()`, нет конструктора без аргументов, одинаковые простые
+  имена) — критическая ошибка обнаружения. В этом запуске не выполняется ни один сравнительный класс, как при
+  критических ошибках самого Jupiter.

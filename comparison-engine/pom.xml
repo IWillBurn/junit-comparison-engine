@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.atpfivt.comparison</groupId>
+        <artifactId>comparison-engine-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>comparison-engine</artifactId>
+    <name>comparison engine, jupiter-descriptors variant (library: API + TestEngine over Jupiter's INTERNAL descriptors)</name>
+
+    <dependencies>
+        <!--
+            Compiled against Jupiter's INTERNAL classes (JupiterTestEngine, descriptors, execution context).
+            They change without notice: the library works with exactly the JUnit version of the parent pom (6.1.3).
+        -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+        </dependency>
+        <!-- PostDiscoveryFilter that hides @ComparisonTest classes from the regular junit-jupiter engine -->
+        <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-launcher</artifactId>
+        </dependency>
+    </dependencies>
+</project>
