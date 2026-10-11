@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.atpfivt.comparison</groupId>
+        <artifactId>comparison-engine-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>comparison-engine-verification</artifactId>
+    <name>comparison engine, class-template variant (automated verification of the examples)</name>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.atpfivt.comparison</groupId>
+            <artifactId>comparison-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- the example classes (examples/target/test-classes in a reactor build) -->
+        <dependency>
+            <groupId>org.atpfivt.comparison</groupId>
+            <artifactId>comparison-engine-examples</artifactId>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-launcher</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- fixtures are run through the Launcher API by the verification tests only -->
+                    <excludes>
+                        <exclude>fixtures/**</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
