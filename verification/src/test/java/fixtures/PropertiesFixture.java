@@ -19,8 +19,9 @@ import org.junit.jupiter.params.provider.MethodSource;
  * Records what differs between the variants: when @BeforeAll and the argument source run, the order of the leaves,
  * the implementation the constructor receives and what TestInfo reports. Run by VariantPropertiesTest only.
  */
-@ComparisonTest({ Calc.Good.class, Calc.Buggy.class })
+@ComparisonTest(classes = { Calc.Good.class, Calc.Buggy.class })
 @TestMethodOrder(MethodOrderer.MethodName.class)
+@SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention", "ClassCanBeRecord"})
 public class PropertiesFixture {
 
     public static final List<String> EVENTS = Collections.synchronizedList(new ArrayList<>());

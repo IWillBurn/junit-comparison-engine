@@ -11,7 +11,7 @@
     <name>comparison engine (parent)</name>
 
     <modules>
-        <module>comparison-engine</module>
+        <module>engine</module>
         <module>examples</module>
         <module>verification</module>
     </modules>

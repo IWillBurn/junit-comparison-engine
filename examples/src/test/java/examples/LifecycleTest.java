@@ -40,7 +40,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
-@ComparisonTest({ Calc.Good.class, Calc.Buggy.class })
+@ComparisonTest(classes = { Calc.Good.class, Calc.Buggy.class })
+// The comparison engine supplies the implementation parameter on the generated test leaf.
+@SuppressWarnings("JUnitMalformedDeclaration")
 class LifecycleTest {
 
     private static int instances;

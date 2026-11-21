@@ -1,124 +1,108 @@
-# Вариант `generated-carrier`: класс-носитель, сгенерированный во время запуска
+# JUnit Comparison Engine
 
-Движок сравнения реализаций для JUnit. Один тест прогоняется на нескольких реализациях. Каждая реализация —
-отдельный лист **под** набором аргументов:
+Run the same JUnit Jupiter tests against multiple implementations of a contract. Give each implementation a named result in the test tree so you can see which one failed and rerun it directly.
 
-```
-MulTest
-├─ mul(int, int, int, Calc)
-│  ├─ [1] 2, 3, 6
-│  │  ├─ Good ✔
-│  │  └─ Buggy ✔
-│  └─ [2] 4, 5, 20
-│     ├─ Good ✔
-│     └─ Buggy ✘ expected: <20> but was: <21>
-└─ mulFourByFive(Calc)
-   ├─ Good ✔
-   └─ Buggy ✘ expected: <20> but was: <21>
+Use the engine to compare a reference implementation with a replacement, test several backends, or check an optimized implementation against the same inputs and assertions.
+
+## Quick start
+
+You need JDK 21 and Maven 3.9 or later.
+
+```sh
+git clone https://github.com/IWillBurn/junit-comparison-engine.git
+cd junit-comparison-engine
+mvn clean verify
 ```
 
-Это один из трёх вариантов движка. У всех вариантов одинаковые пользовательский API ([API.md](API.md)) и примеры.
-Обзор вариантов и их сравнение — в ветке [`main`](https://github.com/IWillBurn/junit-comparison-engine/tree/main).
+The [multiplication example](examples/src/test/java/examples/MulTest.java) runs two input rows against two implementations of [`Calc`](examples/src/test/java/examples/Calc.java).
 
-## Как устроен
+```java
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-- Свой `TestEngine` `comparison-tests` при запуске генерирует (ByteBuddy) класс-носитель `MulTest$$Comparison$1 extends
-  MulTest` в пакете и загрузчике класса пользователя.
-- В носителе на каждый метод теста — `@Nested`-класс. Для `@ParameterizedTest` это `@ParameterizedClass` с
-  источниками и атрибутами метода, аргументы приходят в конструктор. Внутри — по `@Test` на реализацию, он вызывает
-  метод пользователя на внешнем экземпляре.
-- Носитель выполняет настоящий Jupiter во вложенном Launcher: он сам строит `метод > набор > реализация`.
-- Движок публикует дерево-зеркало с именами и источниками (`MethodSource`) пользователя. Фильтр прячет класс
-  пользователя от обычного Jupiter.
+import org.atpfivt.comparison.api.ComparisonTest;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
-## Запуск
-
-Нужны JDK 21 и Maven 3.9+. JUnit 6.1.3. Из корня:
-
-```
-mvn test
+@ComparisonTest(classes = { Calc.Good.class, Calc.Buggy.class })
+class MulTest {
+    @ParameterizedTest(quoteTextArguments = false)
+    @CsvSource({ "2, 3, 6", "4, 5, 20" })
+    void mul(int a, int b, int expected, Calc calc) {
+        assertEquals(expected, calc.mul(a, b));
+    }
+}
 ```
 
-В `examples` падения `Buggy` задуманы, там стоит `testFailureIgnore`. Тесты `verification` должны быть зелёными.
+Each input row has a separate result for each implementation. The example deliberately fails on the second row for `Buggy`, and the verification suite checks that failure.
 
-## IntelliJ IDEA
+```text
+mul(int, int, int, Calc)
+├── [1] 2, 3, 6
+│   ├── Good  ✓
+│   └── Buggy ✓
+└── [2] 4, 5, 20
+    ├── Good  ✓
+    └── Buggy ✗ expected: <20> but was: <21>
+```
 
-Откройте корневой `pom.xml` как проект и запускайте классы из `examples/src/test/java/examples`:
+You can also open the root `pom.xml` in IntelliJ IDEA and run `MulTest` from the gutter.
 
-- **`MulTest`** — дерево выше: `@ParameterizedTest` и `@Test`, падает только `Buggy` на 4 × 5.
-- **`LifecycleTest`** — в выводе каждого листа свои `@BeforeEach`/`@AfterEach` и новый экземпляр (#1..#6).
-  `@BeforeAll` выполняется один раз. Порядок естественный: `Good`, `Buggy` для каждого набора.
-- **`PlainLifecycleTest`** — тот же класс в обычном Jupiter, для сравнения.
+## Use in a Maven project
 
-Любой узел (лист, набор аргументов, метод) перезапускается из дерева результатов, работает и **Rerun Failed Tests**
-(IDE передаёт UniqueId). Перезапуск **точный**: генерируется носитель только с выбранными листьями, набор выбирается
-`IterationSelector`, лишнее не выполняется.
+The current version is a source-built snapshot. Install it in your local Maven repository from the checkout.
 
-Проверено штатным раннером IntelliJ (`JUnitStarter -junit6` из `idea_rt.jar`/`junit6-rt.jar`): сообщения
-`##teamcity` описывают ожидаемое дерево без потерянных и «ignored» листьев; перезапуск двух упавших листьев по UniqueId
-выполняет ровно их.
+```sh
+mvn -pl engine -am install
+```
 
-При запуске одного `LifecycleTest` IntelliJ показывает строку `@BeforeAll` в конце вывода, хотя выполняется она
-первой. Объяснение — в комментарии `LifecycleTest`.
+Add the engine as a test dependency. Use the JUnit BOM to keep the Jupiter and Platform modules on **6.1.3**, the version used by this project.
 
-## Модуль `verification`
+```xml
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>org.junit</groupId>
+            <artifactId>junit-bom</artifactId>
+            <version>6.1.3</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
 
-`ComparisonEngineTest` запускает примеры через Launcher API, как IDE. Проверяется:
+<dependencies>
+    <dependency>
+        <groupId>org.atpfivt.comparison</groupId>
+        <artifactId>comparison-engine</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+        <scope>test</scope>
+    </dependency>
+</dependencies>
+```
 
-- дерево `MulTest` со статусами и уникальные строки CI на каждый лист;
-- в `LifecycleTest` `@BeforeAll` выполняется 1 раз, а `@BeforeEach` и новый экземпляр — на каждый из 6 листов;
-- запуск одного метода;
-- перезапуск листьев и набора аргументов по UniqueId;
-- внешний Jupiter не выполняет сравнительные классы повторно, а вложенный прогон не выполняет повторно обычные
-  классы того же запуска;
-- соблюдается порядок событий: родитель стартует раньше детей и заканчивается после них.
+Place your comparison class under `src/test/java` and run `mvn test` with Maven Surefire. This project uses Surefire 3.5.4. The engine is discovered automatically on the test classpath.
 
-`VariantPropertiesTest` фиксирует одним списком событий то, чем различаются варианты: когда выполняются
-`@BeforeAll` и источник аргументов, порядок листьев, какую реализацию получает конструктор и что видит `TestInfo`.
-Класс `fixtures/PropertiesFixture` запускается только из этого теста.
+## Choose how tests get their arguments
 
-## Особенности варианта
+- **`@ComparisonTest(classes = { … })`** supplies an instance of each implementation. Each implementation has a no-argument constructor. The instance belongs to one test invocation and is also available to its lifecycle methods.
+- **`@ComparisonTest(source = MySource.class)`** supplies arguments from named factories. Use a [`ComparisonSource<T>`](engine/src/main/java/org/atpfivt/comparison/api/ComparisonSource.java) when a test needs a configured client or a value backed by a shared resource. Factories receive a Jupiter store scoped to the test class.
 
-Что получилось лучше, чем в `class-template`:
+Use either form with `@Test` or `@ParameterizedTest`. Read the [API and compatibility guide](API.md) for parameter order, resource lifetime, and extension behavior.
 
-- **`TestInfo.getDisplayName()` листа — имя реализации** (`Good`/`Buggy`): лист — настоящий `@Test` Jupiter.
-- **Источник аргументов вычисляется один раз на метод**, все реализации получают одни и те же данные (один
-  вызов `@ParameterizedClass` = один набор). Исключение: перезапуск, где разным наборам одного метода нужны разные
-  реализации, — тогда один раз на группу наборов.
-- **Естественный порядок:** для каждого набора `Good`, затем `Buggy`. Время контейнеров настоящее.
-- **`@ParameterizedClass` на классе пользователя сочетается сам:** дерево `класс > [1] … > метод > [набор] >
-  реализация` (проверено с конструктором и с полями `@Parameter`). `@TestInstance(PER_CLASS)` работает: один
-  экземпляр на все листья, поэтому конструктор не может получить реализацию.
-- Конструктор класса получает реализацию своего листа (тот же объект, что тест и `@BeforeEach`; `AutoCloseable`
-  закрывается после листа). `@Tag` класса и метода видны на узлах, `TagFilter` работает до уровня метода.
+## How it works
 
-Цена варианта:
+```mermaid
+flowchart LR
+    A["<b>Runner</b><br/><br/>Selects tests"] --> B["<b>Discovery</b><br/><br/>Builds the test tree"]
+    B --> C["<b>Generation</b><br/><br/>Creates nested tests"]
+    C --> D["<b>Jupiter</b><br/><br/>Runs selected variants"]
+    D --> E["<b>Reporting</b><br/><br/>Maps results to source"]
+```
 
-- **Расширения видят сгенерированный код.** `TestInfo.getTestMethod()` / `ExtensionContext.getTestMethod()` —
-  `Good(Calc)`, `getTestClass()` — `MulTest$$Comparison$1$mul`. Пострадают расширения, которые строят что-то по
-  имени метода или класса (snapshot-файлы, `@Sql` по соглашению). В stack trace есть кадр сгенерированного листа.
-- **Аннотации метода переезжают на `@Nested`-класс:** применимые к классу (источники, `@Disabled`, `@Tag`,
-  `@Timeout`, `@ExtendWith`, условия) — на него, остальные — на листья. `@MethodSource`/`@FieldSource` переписываются
-  в `Класс#фабрика`. Не проверялось: `@ExtendWith` на методе теперь получает и `BeforeAll`/`AfterAll` этого класса,
-  короткие ссылки вроде `@EnabledIf("cond")` ищутся во вложенном классе. Составные аннотации с мета-`@ParameterizedTest`
-  и источниками не поддержаны.
-- **Порядок и имена методов считает движок, а не Jupiter:** свой `MethodOrdererContext` для `MethodOrderer` класса
-  (или из конфигурации) и `DisplayNameGenerator`. Без `MethodOrderer` — порядок `ReflectionSupport.findMethods`, как у
-  Jupiter.
-- **Генерация во время запуска:** зависимость ByteBuddy, класс определяется через `MethodHandles.privateLookupIn` в
-  пакете пользователя (на classpath работает; именованный модуль должен открыть пакет). Носитель генерируется на
-  каждый запуск и остаётся в загрузчике.
-- **Тройное обнаружение.** Класс пользователя обнаруживает и обычный Jupiter (потом фильтр его прячет), поэтому его
-  discovery-ошибки (например, нестатический `@BeforeAll`) останавливают весь запуск, как в обычном Jupiter. Движок
-  разбирает класс рефлексией, а вложенный Jupiter обнаруживает носители — один прогон на все классы запуска.
-  Движки платформа выполняет по очереди; внутри прогона параллельный режим Jupiter работает (проверено).
-- **`@ParameterizedClass` на классе пользователя:** перезапуск узла под `[class-invocation:#k]` выполняет метод во всех
-  вызовах класса, лишние результаты отбрасываются.
-- **Не поддержаны** `@Nested`, `@TestFactory`, `@RepeatedTest`, `@TestTemplate` и метод без параметра-реализации:
-  пропущенный лист с причиной, не выполняются ни здесь, ни в обычном Jupiter. Пустой `@ComparisonTest`, реализация
-  без конструктора без аргументов, `final`-класс — класс падает с понятной ошибкой.
-- **API JUnit:** `INTERNAL` не используется. EXPERIMENTAL: `@ParameterizedClass` (на сгенерированных классах — основа
-  варианта), `@ClassTemplate` (распознать шаблон класса), `MethodOrderer.Default`. Неформальные соглашения: номер
-  вызова шаблона класса берётся из значения `#k` последнего сегмента UniqueId Jupiter; узлы вложенного прогона
-  узнаются по `ClassSource`/`MethodSource` сгенерированных классов; область `TEST_METHOD` резолвера (MAINTAINED)
-  действует и на конструктор внешнего экземпляра `@Nested`-теста — проверено, но не задокументировано.
+The engine generates a subclass of the test class and delegates execution to Jupiter. Jupiter handles parameter sources, lifecycle callbacks, and extensions on the generated tests. The engine reports results against the original test methods so runners can navigate to the test and select individual implementations. Extensions that inspect test metadata can see the generated classes and methods.
+
+## Contributing
+
+The [`engine`](engine) module contains the API and the JUnit Platform engine. The [`examples`](examples) module demonstrates behavior, and [`verification`](verification) checks test trees, lifecycle, extension compatibility, and reruns through the Launcher API.
+
+Run `mvn clean verify` before submitting a change. For a bug report, include the JDK and JUnit versions, the runner, and a minimal test that reproduces the behavior. [GitHub Issues](https://github.com/IWillBurn/junit-comparison-engine/issues)
