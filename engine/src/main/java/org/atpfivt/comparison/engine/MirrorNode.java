@@ -10,6 +10,7 @@ import org.atpfivt.comparison.engine.ComparisonClass.Implementation;
 import org.atpfivt.comparison.engine.ComparisonClass.Member;
 import org.atpfivt.comparison.engine.ComparisonClass.TestMethod;
 import org.atpfivt.comparison.engine.ComparisonClass.UnsupportedMember;
+import org.jspecify.annotations.Nullable;
 import org.junit.platform.engine.TestSource;
 import org.junit.platform.engine.TestTag;
 import org.junit.platform.engine.UniqueId;
@@ -177,12 +178,12 @@ abstract sealed class MirrorNode extends AbstractTestDescriptor
 
         /** {@code parent}: the class node, or a class invocation node. */
         MethodNode(MirrorNode parent, TestMethod method) {
-            super(parent, method, method.legacyName() + invocationSuffix(parent.position()));
+            super(parent, method, method.legacyName() + invocationSuffix(parent.position().classInvocation()));
             this.method = method;
         }
 
-        private static String invocationSuffix(Position parent) {
-            return parent.classInvocation() == null ? "" : "[" + parent.classInvocation() + "]";
+        private static String invocationSuffix(@Nullable Integer invocation) {
+            return invocation == null ? "" : "[" + invocation + "]";
         }
 
         TestMethod method() {

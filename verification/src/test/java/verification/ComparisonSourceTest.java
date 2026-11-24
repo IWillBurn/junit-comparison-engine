@@ -2,6 +2,7 @@ package verification;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass;
@@ -16,6 +17,8 @@ import org.atpfivt.comparison.api.ComparisonContext;
 import org.atpfivt.comparison.api.ComparisonSource;
 import org.atpfivt.comparison.api.ComparisonTest;
 import org.atpfivt.comparison.api.Variant;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
@@ -39,6 +42,7 @@ import org.junit.platform.launcher.TestIdentifier;
 import org.junit.platform.launcher.core.LauncherDiscoveryRequestBuilder;
 import org.junit.platform.launcher.core.LauncherFactory;
 
+@NullMarked
 class ComparisonSourceTest {
 
     @Test
@@ -59,6 +63,7 @@ class ComparisonSourceTest {
         Run full = Run.of(selectClass(Fixture.class));
         assertSuccessful(full, 12);
         assertEquals(12, Source.arguments.get());
+        assertEquals(12, Source.endpointClaims.get());
         assertEquals(2, Resource.opened.get());
         assertEquals(2, Resource.closed.get());
         assertEquals(1, Source.beforeAll.get());
@@ -77,6 +82,7 @@ class ComparisonSourceTest {
         assertSuccessful(single, 1);
         assertEquals(List.of(full.path(selected)), single.leaves());
         assertEquals(1, Source.arguments.get());
+        assertEquals(1, Source.endpointClaims.get());
         assertEquals(1, Resource.opened.get());
         assertEquals(1, Resource.closed.get());
         assertEquals(1, Source.beforeAll.get());
@@ -90,7 +96,7 @@ class ComparisonSourceTest {
 
     private static void assertSuccessful(Run run, int count) {
         String tree = run.tree(Fixture.class.getName());
-        assertFalse(tree.contains("\u2718"), tree);
+        assertFalse(tree.contains("✘"), tree);
         assertEquals(count, run.leaves().size(), tree);
         assertEquals(List.of(), run.violations);
     }
@@ -102,8 +108,10 @@ class ComparisonSourceTest {
     @ComparisonTest(source = Source.class)
     @ParameterizedClass
     @ValueSource(ints = { 7, 8 })
+    @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention", "resource"})
     static class Fixture {
         @Parameter
+        @SuppressWarnings("unused") // Assigned by Jupiter.
         int value;
 
         private final Argument constructed;
@@ -123,6 +131,7 @@ class ComparisonSourceTest {
             assertSame(variant, argument.variant());
             assertSame(variant, endpoint.variant());
             assertEquals(info.getDisplayName(), variant.testName());
+            assertEquals(variant == Backend.DIRECT, variant.isOracle());
             assertFalse(argument.resource().isClosed);
         }
 
@@ -142,7 +151,12 @@ class ComparisonSourceTest {
     }
 
     enum Backend implements Variant {
-        DIRECT,
+        DIRECT {
+            @Override
+            public boolean isOracle() {
+                return true;
+            }
+        },
         PROXY {
             @Override
             public String testName() {
@@ -156,6 +170,7 @@ class ComparisonSourceTest {
             BeforeEachCallback, AfterEachCallback {
         private static final Namespace NAMESPACE = Namespace.create(Source.class);
         static final AtomicInteger arguments = new AtomicInteger();
+        static final AtomicInteger endpointClaims = new AtomicInteger();
         static final AtomicInteger beforeAll = new AtomicInteger();
         static final AtomicInteger afterAll = new AtomicInteger();
         static final AtomicInteger beforeInvocation = new AtomicInteger();
@@ -166,6 +181,7 @@ class ComparisonSourceTest {
 
         static void reset() {
             arguments.set(0);
+            endpointClaims.set(0);
             beforeAll.set(0);
             afterAll.set(0);
             beforeInvocation.set(0);
@@ -178,6 +194,7 @@ class ComparisonSourceTest {
         }
 
         @Override
+        @SuppressWarnings("resource") // Jupiter closes the resource with the request store.
         public void beforeAll(ExtensionContext context) {
             assertFalse(started);
             started = true;
@@ -205,7 +222,7 @@ class ComparisonSourceTest {
         @Override
         public void beforeEach(ExtensionContext context) {
             assertTrue(started);
-            assertTrue(ComparisonContext.variant(context).orElseThrow() instanceof Backend);
+            assertInstanceOf(Backend.class, ComparisonContext.variant(context).orElseThrow());
             beforeEach.incrementAndGet();
         }
 
@@ -224,6 +241,7 @@ class ComparisonSourceTest {
             assertTrue(started);
             return List.of(new TypeBasedParameterResolver<Argument>() {
                 @Override
+                @SuppressWarnings("resource") // Jupiter closes the resource with the class store.
                 public Argument resolveParameter(ParameterContext parameter, ExtensionContext context) {
                     var classStore = ComparisonContext.classContext(context).getStore(NAMESPACE);
                     var resource = classStore.computeIfAbsent(Resource.class, key -> new Resource(), Resource.class);
@@ -232,7 +250,16 @@ class ComparisonSourceTest {
                         return new Argument(variant, resource);
                     }, Argument.class);
                 }
-            }, new TypeBasedParameterResolver<Endpoint>() {
+            }, new ParameterResolver() {
+                @Override
+                public boolean supportsParameter(ParameterContext parameter, ExtensionContext context) {
+                    if (parameter.getParameter().getType() != Endpoint.class) {
+                        return false;
+                    }
+                    endpointClaims.incrementAndGet();
+                    return true;
+                }
+
                 @Override
                 public Endpoint resolveParameter(ParameterContext parameter, ExtensionContext context) {
                     return new Endpoint(variant);
@@ -255,7 +282,7 @@ class ComparisonSourceTest {
         static final AtomicInteger closed = new AtomicInteger();
 
         private boolean isClosed;
-        private Integer classArgument;
+        private @Nullable Integer classArgument;
 
         Resource() {
             opened.incrementAndGet();

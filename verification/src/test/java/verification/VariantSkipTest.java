@@ -15,6 +15,7 @@ import org.atpfivt.comparison.api.ComparisonSource;
 import org.atpfivt.comparison.api.ComparisonTest;
 import org.atpfivt.comparison.api.Skip;
 import org.atpfivt.comparison.api.Variant;
+import org.jspecify.annotations.NullMarked;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
@@ -26,6 +27,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+@NullMarked
 class VariantSkipTest {
 
     @Test
@@ -36,9 +38,9 @@ class VariantSkipTest {
         assertEquals(3, Argument.created.get(), tree);
         assertEquals(4, run.leaves().size(), tree);
         assertTrue(run.leaves().stream().allMatch(path -> path.endsWith(" > PRIMARY")), tree);
-        assertTrue(tree.contains("Secondary backend \u21b7 Comparison variant disabled by @Skip"), tree);
-        assertTrue(tree.contains("Secondary backend \u21b7 whole method disabled"), tree);
-        assertFalse(tree.contains("\u2718"), tree);
+        assertTrue(tree.contains("Secondary backend ↷ Comparison variant disabled by @Skip"), tree);
+        assertTrue(tree.contains("Secondary backend ↷ whole method disabled"), tree);
+        assertFalse(tree.contains("✘"), tree);
         assertEquals(List.of(), run.violations);
     }
 
@@ -48,13 +50,15 @@ class VariantSkipTest {
         String tree = run.tree(FromSource.class.getName());
         assertEquals(2, run.leaves().size(), tree);
         assertTrue(run.leaves().stream().allMatch(path -> path.endsWith(" > DIRECT")), tree);
+        assertFalse(run.all().stream().anyMatch(node -> node.getDisplayName().equals(Backend.UNAVAILABLE.testName())));
         assertEquals(2, tree.lines()
-                .filter(line -> line.contains("Via proxy \u21b7 Comparison variant disabled by @Skip")).count(), tree);
-        assertFalse(tree.contains("\u2718"), tree);
+                .filter(line -> line.contains("Via proxy ↷ Comparison variant disabled by @Skip")).count(), tree);
+        assertFalse(tree.contains("✘"), tree);
         assertEquals(List.of(), run.violations);
     }
 
     @ComparisonTest(classes = ClassBackend.class)
+    @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention", "ClassCanBeRecord"})
     static class FromClasses {
         private final ClassBackend constructed;
 
@@ -90,6 +94,7 @@ class VariantSkipTest {
         @Disabled("whole method disabled")
         @Skip("SECONDARY")
         void disabled(Argument argument) {
+            throw new AssertionError("disabled test was invoked");
         }
     }
 
@@ -117,6 +122,7 @@ class VariantSkipTest {
     }
 
     @ComparisonTest(source = Source.class)
+    @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention"})
     static class FromSource {
         @ParameterizedTest
         @ValueSource(strings = {"first", "second"})

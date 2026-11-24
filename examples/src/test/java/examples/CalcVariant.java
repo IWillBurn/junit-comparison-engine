@@ -1,8 +1,10 @@
 package examples;
 
 import org.atpfivt.comparison.api.ClassVariant;
+import org.jspecify.annotations.NullMarked;
 
 /** The implementations used in the calculator comparisons. */
+@NullMarked
 public enum CalcVariant implements ClassVariant {
     GOOD(Calc.Good.class),
     BUGGY(Calc.Buggy.class);

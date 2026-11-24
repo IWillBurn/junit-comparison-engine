@@ -104,7 +104,7 @@ final class CarrierGenerator {
         // The nested classes need the carrier's type before we can add them to it.
         TypeDescription carrierType = carrier.toTypeDescription();
 
-        UniqueNames simpleNames = new UniqueNames("_");
+        UniqueNames simpleNames = new UniqueNames();
         List<UnloadedNestedClass> nestedClasses = new ArrayList<>();
         for (CarrierPlan nestedClassPlan : plans) {
             String name = carrierName + "$" + simpleNames.next(nestedClassPlan.method().method().getName());
@@ -190,7 +190,7 @@ final class CarrierGenerator {
                         SyntheticState.SYNTHETIC);
             builder = defineConstructor(builder);
             builder = addSourceResolver(builder);
-            UniqueNames leafNames = new UniqueNames("_");
+            UniqueNames leafNames = new UniqueNames();
             for (CarrierAnnotations.InstanceCondition condition : annotations.instanceConditions()) {
                 leafNames.next(condition.name());
                 builder = builder.defineMethod(condition.name(), boolean.class, Visibility.PRIVATE, Ownership.STATIC)

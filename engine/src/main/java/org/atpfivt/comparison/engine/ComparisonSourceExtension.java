@@ -3,6 +3,7 @@ package org.atpfivt.comparison.engine;
 import java.lang.reflect.Constructor;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 import org.atpfivt.comparison.api.ComparisonContext;
@@ -23,7 +24,8 @@ import org.junit.jupiter.api.extension.ParameterResolutionException;
 import org.junit.jupiter.api.extension.ParameterResolver;
 
 /** Adapts one source to Jupiter's generated class and invocation contexts. */
-final class ComparisonSourceExtension<V extends Enum<V> & Variant> implements ParameterResolver,
+record ComparisonSourceExtension<V extends Enum<V> & Variant>(ComparisonSource<V> source, Map<String, Variant> variants)
+        implements ParameterResolver,
         BeforeAllCallback, AfterAllCallback, BeforeClassTemplateInvocationCallback, AfterClassTemplateInvocationCallback,
         BeforeEachCallback, AfterEachCallback {
 
@@ -32,13 +34,12 @@ final class ComparisonSourceExtension<V extends Enum<V> & Variant> implements Pa
     private record Resolvers(List<ParameterResolver> entries) {
     }
 
-    private final ComparisonSource<V> source;
-    private final Map<String, Variant> variants;
+    private record SelectedResolver(ParameterResolver delegate) {
+    }
 
     ComparisonSourceExtension(ComparisonSource<V> source, List<Implementation> implementations) {
-        this.source = source;
-        this.variants = implementations.stream().collect(Collectors.toUnmodifiableMap(Implementation::name,
-            Implementation::variant));
+        this(source, implementations.stream().collect(Collectors.toUnmodifiableMap(Implementation::name,
+            Implementation::variant)));
     }
 
     // Jupiter inherits extensions into @Nested classes. Class callbacks belong to the enclosing carrier.
@@ -94,30 +95,32 @@ final class ComparisonSourceExtension<V extends Enum<V> & Variant> implements Pa
     @Override
     public boolean supportsParameter(ParameterContext parameter, ExtensionContext context) {
         var leaf = context.getTestMethod().orElse(null);
-        if (leaf == null || (parameter.getDeclaringExecutable() instanceof Constructor<?> constructor
+        if (leaf == null || !leaf.isAnnotationPresent(ImplementationLeaf.class)
+                || (parameter.getDeclaringExecutable() instanceof Constructor<?> constructor
                 && constructor.getDeclaringClass() == leaf.getDeclaringClass())) {
             return false;
         }
         var marker = leaf.getAnnotation(ImplementationLeaf.class);
-        return marker != null && (parameter.getParameter().getType() == marker.variantType()
-                || resolver(parameter, context, marker.value()) != null);
+        return parameter.getParameter().getType() == marker.variantType()
+                || selectResolver(parameter, context, marker.value());
     }
 
     @Override
     public @Nullable Object resolveParameter(ParameterContext parameter, ExtensionContext context) {
-        var marker = context.getRequiredTestMethod().getAnnotation(ImplementationLeaf.class);
+        var marker = Objects.requireNonNull(context.getRequiredTestMethod().getAnnotation(ImplementationLeaf.class));
         if (parameter.getParameter().getType() == marker.variantType()) {
             return variants.get(marker.value());
         }
-        var delegate = resolver(parameter, context, marker.value());
-        if (delegate == null) {
+        var selected = context.getStore(NAMESPACE).remove(parameter.getParameter(), SelectedResolver.class);
+        if (selected == null) {
             throw new ParameterResolutionException("No resolver for " + parameter.getParameter());
         }
-        return delegate.resolveParameter(parameter, context);
+        return selected.delegate().resolveParameter(parameter, context);
     }
 
-    private @Nullable ParameterResolver resolver(ParameterContext parameter, ExtensionContext context, String name) {
-        var resolvers = context.getStore(NAMESPACE).computeIfAbsent(name, this::resolvers, Resolvers.class);
+    private boolean selectResolver(ParameterContext parameter, ExtensionContext context, String name) {
+        var store = context.getStore(NAMESPACE);
+        var resolvers = store.computeIfAbsent(name, this::resolvers, Resolvers.class);
         ParameterResolver match = null;
         for (var resolver : resolvers.entries()) {
             if (resolver.supportsParameter(parameter, context)) {
@@ -128,7 +131,11 @@ final class ComparisonSourceExtension<V extends Enum<V> & Variant> implements Pa
                 match = resolver;
             }
         }
-        return match;
+        if (match == null) {
+            return false;
+        }
+        store.put(parameter.getParameter(), new SelectedResolver(match));
+        return true;
     }
 
     @SuppressWarnings("unchecked") // Discovery obtained these enum constants from the same source class.

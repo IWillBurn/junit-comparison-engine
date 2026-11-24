@@ -47,10 +47,10 @@ public final class ImplementationResolver implements ParameterResolver {
     @Override
     public boolean supportsParameter(ParameterContext parameterContext, ExtensionContext extensionContext) {
         Method leaf = extensionContext.getTestMethod().orElse(null);
-        ImplementationLeaf implementation = leaf == null ? null : leaf.getAnnotation(ImplementationLeaf.class);
-        if (leaf == null || implementation == null) {
+        if (leaf == null || !leaf.isAnnotationPresent(ImplementationLeaf.class)) {
             return false;
         }
+        ImplementationLeaf implementation = leaf.getAnnotation(ImplementationLeaf.class);
         var executable = parameterContext.getDeclaringExecutable();
         if (executable instanceof Constructor<?> && executable.getDeclaringClass() == leaf.getDeclaringClass()) {
             return false; // The generated nested constructor takes Jupiter's argument set.

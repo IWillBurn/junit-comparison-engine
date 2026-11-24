@@ -117,7 +117,7 @@ class AnnotationCompatibilityTest {
 
     @ComparisonTest(classes = CalcVariant.class)
     @DisplayName("ComposedTestFixture")
-    @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention"})
+    @SuppressWarnings("NewClassNamingConvention")
     static class ComposedTestFixture {
 
         static final List<String> events = new ArrayList<>();
@@ -237,6 +237,7 @@ class AnnotationCompatibilityTest {
     @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention"})
     static class LocalSourceFixture {
 
+        @SuppressWarnings("unused") // Read by the composed @FieldSource.
         static final List<String> LOCAL_VALUES = List.of("field");
 
         static Stream<String> localCases() {
@@ -298,7 +299,7 @@ class AnnotationCompatibilityTest {
 
     @ComparisonTest(classes = CalcVariant.class)
     @DisplayName("ConditionFixture")
-    @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention"})
+    @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention", "ClassCanBeRecord"})
     static class ConditionFixture {
 
         private final Calc implementation;

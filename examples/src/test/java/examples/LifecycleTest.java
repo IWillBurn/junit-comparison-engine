@@ -1,13 +1,13 @@
 /*
- * Lifecycle per leaf: @BeforeEach/@AfterEach and a new instance of the class (instance #1..#6) for every leaf,
+ * Lifecycle per leaf: @BeforeEach/@AfterEach and a new instance of the class (instances 1 through 6),
  * @BeforeAll once. Compare with PlainLifecycleTest, the same class in plain Jupiter.
  *
  * The order of the leaves depends on the variant. class-template runs them "by implementation": first all Good
- * (instances #1..#3), then all Buggy (#4..#6). generated-carrier and jupiter-descriptors run them in the order of the
+ * (instances 1 through 3), then all Buggy (instances 4 through 6). generated-carrier and jupiter-descriptors run them in the order of the
  * tree: per argument set Good, then Buggy.
  *
- * In IntelliJ, when this class is run alone, the "@BeforeAll" line is shown at the very end of the output although it
- * runs first. The output of @BeforeAll belongs to the root (the class). IntelliJ puts the root's output before the
+ * When this class is run alone, IntelliJ shows the "@BeforeAll" line at the end of the output. The callback runs first
+ * and its output belongs to the root (the class). IntelliJ puts the root's output before the
  * children only if the root has a leaf among the children known before the run, otherwise after the whole tree. Here
  * the class has only containers below it (even @Test became a container with the Good/Buggy leaves), so the line is at
  * the bottom. PlainLifecycleTest has the leaf mulTwoByTwo(), so there it is at the top.

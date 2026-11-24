@@ -73,9 +73,8 @@ final class CarrierAnnotations {
     }
 
     CarrierAnnotations(Class<?> userClass, Method method, String displayName, boolean parameterized) {
-        Skip skip = method.getDeclaredAnnotation(Skip.class);
-        skippedVariants = skip == null || AnnotationSupport.isAnnotated(method, Disabled.class)
-                ? List.of() : List.of(skip.value());
+        skippedVariants = method.isAnnotationPresent(Skip.class) && !AnnotationSupport.isAnnotated(method, Disabled.class)
+                ? List.of(method.getDeclaredAnnotation(Skip.class).value()) : List.of();
         onNestedClass = new ArrayList<>(List.of(
             annotation(Nested.class).build(),
             annotation(DisplayName.class).define("value", displayName).build(),

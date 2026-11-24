@@ -239,6 +239,7 @@ class ComparisonEngineTest {
     static class TemplateFixture extends RerunFixture {
 
         @Parameter
+        @SuppressWarnings("unused") // Bound by Jupiter for the invocation callbacks.
         int value;
 
         TemplateFixture(Calc implementation) {
@@ -346,6 +347,7 @@ class ComparisonEngineTest {
         }
     }
 
+    @NullMarked
     enum OnlyGood implements ClassVariant {
         GOOD;
 

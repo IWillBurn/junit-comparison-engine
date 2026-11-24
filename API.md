@@ -9,7 +9,7 @@ Both forms can supply the current enum constant to a test parameter of the enum 
 For `@ParameterizedTest`, declare argument-set parameters first, followed by parameters supplied by the engine or other Jupiter resolvers. `@ComparisonArguments(n)` counts the leading argument-set parameters. It is required with `source`. With `classes`, the engine infers the boundary from the comparison parameters unless you specify the count explicitly.
 
 ```java
-void mul(int a, int b, int expected, Calc calc, TestInfo info)
+void mul(int a, int b, int expected, Calc calc, TestInfo info) { /* ... */ }
 ```
 
 The argument source runs once per method for each invocation of the enclosing test class. Every implementation in an input row receives the same source arguments. Local `@MethodSource` methods and `@FieldSource` fields must be static. Method-level parameter resolver extensions can supply parameters to a `@MethodSource` factory.
