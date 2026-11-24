@@ -35,15 +35,12 @@ import net.bytebuddy.implementation.LoadedTypeInitializer;
 import net.bytebuddy.implementation.MethodCall;
 import net.bytebuddy.jar.asm.Opcodes;
 import net.bytebuddy.matcher.ElementMatchers;
-import org.atpfivt.comparison.api.ComparisonTest;
+import org.atpfivt.comparison.api.ComparisonSource;
 import org.atpfivt.comparison.engine.ComparisonClass.Implementation;
 import org.atpfivt.comparison.engine.ComparisonClass.TestMethod;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.Extension;
 import org.junit.jupiter.api.extension.ExtensionContext;
-import org.junit.jupiter.api.extension.ParameterResolver;
 import org.junit.jupiter.api.extension.RegisterExtension;
-import org.junit.platform.commons.support.AnnotationSupport;
 import org.junit.platform.commons.support.ReflectionSupport;
 
 /**
@@ -88,18 +85,12 @@ final class CarrierGenerator {
                 .subclass(userClass, ConstructorStrategy.Default.IMITATE_SUPER_CLASS.withInheritedAnnotations())
                 .name(carrierName)
                 .annotateType(CarrierAnnotations.carrier(userClass, model.displayName()));
-        if (model.implementations().getFirst().implementationType() != null) {
-            carrier = carrier.annotateType(AnnotationDescription.Builder.ofType(ExtendWith.class)
-                    .defineTypeArray("value", ImplementationResolver.class).build());
-        }
-        else {
-            var declaration = AnnotationSupport.findAnnotation(userClass, ComparisonTest.class).orElseThrow();
-            var source = ReflectionSupport.newInstance(declaration.source());
-            carrier = carrier.defineField("$comparisonSourceExtension", Extension.class,
-                        Visibility.PACKAGE_PRIVATE, Ownership.STATIC)
-                    .annotateField(AnnotationDescription.Builder.ofType(RegisterExtension.class).build())
-                    .initializer(new LoadedTypeInitializer.ForStaticField("$comparisonSourceExtension",
-                        new ComparisonSourceExtension<>(source, model.implementations())));
+        Class<? extends ComparisonSource<?>> sourceType = model.sourceType();
+        ComparisonSource<?> source = sourceType == null ? null : ReflectionSupport.newInstance(sourceType);
+        carrier = registerExtension(carrier, "$comparisonParameterResolver",
+            new VariantParameterResolver(model.implementations(), source));
+        if (source != null) {
+            carrier = registerExtension(carrier, "$comparisonSourceExtension", new ComparisonSourceLifecycle(source));
         }
         // The nested classes need the carrier's type before we can add them to it.
         TypeDescription carrierType = carrier.toTypeDescription();
@@ -122,6 +113,13 @@ final class CarrierGenerator {
             return new Carrier(loaded.get(carrierType),
                 nestedClasses.stream().map(nested -> nested.load(loaded)).toList());
         }
+    }
+
+    private static <T> DynamicType.Builder<T> registerExtension(DynamicType.Builder<T> builder, String field,
+            Extension extension) {
+        return builder.defineField(field, Extension.class, Visibility.PACKAGE_PRIVATE, Ownership.STATIC)
+                .annotateField(AnnotationDescription.Builder.ofType(RegisterExtension.class).build())
+                .initializer(new LoadedTypeInitializer.ForStaticField(field, extension));
     }
 
     /** A generated nested class before loading. */
@@ -208,11 +206,8 @@ final class CarrierGenerator {
         }
 
         private DynamicType.Builder<Object> addSourceResolver(DynamicType.Builder<Object> builder) {
-            return annotations.sourceResolver().map(resolver -> builder
-                    .defineField("$comparisonSourceResolver", ParameterResolver.class, Visibility.PACKAGE_PRIVATE,
-                        Ownership.STATIC)
-                    .annotateField(AnnotationDescription.Builder.ofType(RegisterExtension.class).build())
-                    .initializer(new LoadedTypeInitializer.ForStaticField("$comparisonSourceResolver", resolver)))
+            return annotations.sourceResolver()
+                    .map(resolver -> registerExtension(builder, "$comparisonSourceResolver", resolver))
                     .orElse(builder);
         }
 

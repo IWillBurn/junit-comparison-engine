@@ -42,7 +42,8 @@ import org.junit.platform.engine.support.descriptor.MethodSource;
 
 /** A comparison class in Jupiter's display order, or an invalid class with a discovery problem. */
 record ComparisonClass(Class<?> testClass, String displayName, Set<TestTag> tags, boolean classTemplate,
-        List<Implementation> implementations, List<Member> members, @Nullable String problem) {
+        @Nullable Class<? extends ComparisonSource<?>> sourceType, List<Implementation> implementations,
+        List<Member> members, @Nullable String problem) {
 
     /** One variant, with a concrete implementation class for the {@code classes} form. */
     record Implementation(Variant variant, Class<? extends Variant> variantType, String displayName,
@@ -129,7 +130,8 @@ record ComparisonClass(Class<?> testClass, String displayName, Set<TestTag> tags
             List<Implementation> implementations = hasSource ? sourceImplementations(source) : classImplementations(classes);
             validateVariantNames(implementations);
             List<Member> members = members(testClass, implementations, generator, configuration);
-            return new ComparisonClass(testClass, displayName, tags, classTemplate, implementations, members, null);
+            return new ComparisonClass(testClass, displayName, tags, classTemplate, hasSource ? source : null,
+                implementations, members, null);
         }
         catch (RuntimeException | LinkageError e) {
             return invalid(testClass, displayName, tags, classTemplate, "cannot analyze the class: " + e);
@@ -195,7 +197,7 @@ record ComparisonClass(Class<?> testClass, String displayName, Set<TestTag> tags
 
     private static ComparisonClass invalid(Class<?> testClass, String displayName, Set<TestTag> tags,
             boolean classTemplate, String problem) {
-        return new ComparisonClass(testClass, displayName, tags, classTemplate, List.of(), List.of(), problem);
+        return new ComparisonClass(testClass, displayName, tags, classTemplate, null, List.of(), List.of(), problem);
     }
 
     private static @Nullable String problem(Class<?> testClass, Class<? extends ClassVariant> classes, boolean hasSource) {
