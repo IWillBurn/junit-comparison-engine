@@ -1,6 +1,5 @@
 package org.atpfivt.comparison.engine;
 
-import static java.util.function.Predicate.not;
 import static org.junit.platform.commons.support.AnnotationSupport.findAnnotation;
 import static org.junit.platform.commons.support.AnnotationSupport.isAnnotated;
 
@@ -18,9 +17,11 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import org.atpfivt.comparison.api.ClassVariant;
+import org.atpfivt.comparison.api.ComparisonArguments;
 import org.atpfivt.comparison.api.ComparisonSource;
-import org.atpfivt.comparison.api.ComparisonSource.Factory;
 import org.atpfivt.comparison.api.ComparisonTest;
+import org.atpfivt.comparison.api.Variant;
 import org.atpfivt.comparison.engine.Position.MemberId;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.ClassTemplate;
@@ -43,8 +44,17 @@ import org.junit.platform.engine.support.descriptor.MethodSource;
 record ComparisonClass(Class<?> testClass, String displayName, Set<TestTag> tags, boolean classTemplate,
         List<Implementation> implementations, List<Member> members, @Nullable String problem) {
 
-    /** One leaf name and argument type, with a factory for variants declared by a source. */
-    record Implementation(String name, Class<?> type, @Nullable Factory<?> factory) {
+    /** One variant, with a concrete implementation class for the {@code classes} form. */
+    record Implementation(Variant variant, Class<? extends Variant> variantType, String displayName,
+            @Nullable Class<?> implementationType) {
+
+        String name() {
+            return variant.name();
+        }
+
+        boolean accepts(Class<?> type) {
+            return implementationType != null && type.isAssignableFrom(implementationType);
+        }
     }
 
     /** A member of the class that gets a node: a test method, or something the engine cannot run. */
@@ -62,10 +72,11 @@ record ComparisonClass(Class<?> testClass, String displayName, Set<TestTag> tags
     /**
      * A {@code @Test} or {@code @ParameterizedTest} method, run on every implementation.
      *
-     * @param implementationIndex the index of the implementation parameter
+     * @param argumentCount the number of leading parameters populated by a parameterized argument source
+     * @param implementationIndex the index of the class implementation parameter, or -1 for enum sources
      */
     record TestMethod(Method method, String displayName, Set<TestTag> tags, TestSource source, boolean parameterized,
-            int implementationIndex) implements Member {
+            int argumentCount, int implementationIndex) implements Member {
 
         @Override
         public MemberId id() {
@@ -108,14 +119,15 @@ record ComparisonClass(Class<?> testClass, String displayName, Set<TestTag> tags
             DisplayNameGenerator generator = JupiterConventions.displayNameGenerator(testClass, configuration);
             displayName = JupiterConventions.displayName(testClass, generator);
             ComparisonTest declaration = findAnnotation(testClass, ComparisonTest.class).orElseThrow();
-            Class<?>[] classes = declaration.classes();
+            var classes = declaration.classes();
             var source = declaration.source();
             boolean hasSource = source != ComparisonTest.NoSource.class;
             String problem = problem(testClass, classes, hasSource);
             if (problem != null) {
                 return invalid(testClass, displayName, tags, classTemplate, problem);
             }
-            List<Implementation> implementations = hasSource ? implementations(source) : implementations(classes);
+            List<Implementation> implementations = hasSource ? sourceImplementations(source) : classImplementations(classes);
+            validateVariantNames(implementations);
             List<Member> members = members(testClass, implementations, generator, configuration);
             return new ComparisonClass(testClass, displayName, tags, classTemplate, implementations, members, null);
         }
@@ -186,19 +198,17 @@ record ComparisonClass(Class<?> testClass, String displayName, Set<TestTag> tags
         return new ComparisonClass(testClass, displayName, tags, classTemplate, List.of(), List.of(), problem);
     }
 
-    private static @Nullable String problem(Class<?> testClass, Class<?>[] implementations, boolean hasSource) {
+    private static @Nullable String problem(Class<?> testClass, Class<? extends ClassVariant> classes, boolean hasSource) {
         if (Modifier.isFinal(testClass.getModifiers())) {
             return "the class must not be final: the engine runs it through a generated subclass";
         }
         if (hasSource) {
-            return implementations.length == 0 ? null : "declare either implementation classes or a source";
+            return classes == ClassVariant.class ? null : "declare either implementation classes or a source";
         }
-        if (implementations.length == 0) {
-            return "@ComparisonTest lists no implementations";
+        if (classes == ClassVariant.class) {
+            return "@ComparisonTest must declare implementation classes or a source";
         }
-        return Arrays.stream(implementations).filter(not(ComparisonClass::isInstantiable)).findFirst()
-                .map(type -> "implementation " + type.getName() + " must be a concrete class with a no-arg constructor")
-                .orElse(null);
+        return classes.isEnum() ? null : "classes must refer to an enum implementing ClassVariant";
     }
 
     private static boolean isInstantiable(Class<?> type) {
@@ -206,34 +216,45 @@ record ComparisonClass(Class<?> testClass, String displayName, Set<TestTag> tags
                 && Arrays.stream(type.getDeclaredConstructors()).anyMatch(c -> c.getParameterCount() == 0);
     }
 
-    static List<Implementation> implementations(Class<?>[] types) {
-        UniqueNames names = new UniqueNames("#");
+    private static List<Implementation> classImplementations(Class<? extends ClassVariant> classes) {
         List<Implementation> implementations = new ArrayList<>();
-        for (Class<?> type : types) {
-            implementations.add(new Implementation(names.next(type.getSimpleName()), type, null));
+        for (ClassVariant variant : classes.getEnumConstants()) {
+            var type = Objects.requireNonNull(variant.implementation(), "implementation for " + variant.name());
+            if (!isInstantiable(type)) {
+                throw new IllegalArgumentException("implementation " + type.getName()
+                        + " must be a concrete class with a no-arg constructor");
+            }
+            implementations.add(new Implementation(variant, classes, displayName(variant), type));
+        }
+        if (implementations.isEmpty()) {
+            throw new IllegalArgumentException("the implementation enum has no variants");
         }
         return implementations;
     }
 
-    private static List<Implementation> implementations(Class<? extends ComparisonSource<?>> sourceType) {
+    private static List<Implementation> sourceImplementations(Class<? extends ComparisonSource<?>> sourceType) {
         ComparisonSource<?> source = ReflectionSupport.newInstance(sourceType);
-        Class<?> type = Objects.requireNonNull(source.argumentType(), "comparison argument type");
-        if (type.isPrimitive()) {
-            throw new IllegalArgumentException("the comparison argument type must be a reference type");
-        }
         var variants = List.copyOf(source.variants());
         if (variants.isEmpty()) {
             throw new IllegalArgumentException("the comparison source lists no variants");
         }
+        return variants.stream().map(variant -> new Implementation(variant,
+            variant.getDeclaringClass().asSubclass(Variant.class),
+            displayName(variant), null)).toList();
+    }
+
+    private static String displayName(Variant variant) {
+        return Objects.requireNonNull(variant.testName(), "variant display name");
+    }
+
+    private static void validateVariantNames(List<Implementation> implementations) {
         Set<String> names = new HashSet<>();
-        List<Implementation> implementations = new ArrayList<>();
-        for (var variant : variants) {
-            if (!names.add(variant.name())) {
-                throw new IllegalArgumentException("duplicate comparison variant name: " + variant.name());
+        for (var implementation : implementations) {
+            String name = implementation.name();
+            if (!names.add(name)) {
+                throw new IllegalArgumentException("duplicate comparison variant name: " + name);
             }
-            implementations.add(new Implementation(variant.name(), type, variant.factory()));
         }
-        return implementations;
     }
 
     /** The test methods in Jupiter's order, then the {@code @Nested} classes (unsupported). */
@@ -264,18 +285,37 @@ record ComparisonClass(Class<?> testClass, String displayName, Set<TestTag> tags
         Set<TestTag> tags = JupiterConventions.tags(method);
         TestSource source = MethodSource.from(testClass, method);
         boolean parameterized = isAnnotated(method, ParameterizedTest.class);
-        int implementationIndex = implementationParameter(method,
-            type -> implementations.stream().allMatch(implementation -> type.isAssignableFrom(implementation.type())));
-        String reason = whyUnsupported(method, parameterized, implementationIndex, implementations);
+        Implementation first = implementations.getFirst();
+        boolean sourced = first.implementationType() == null;
+        int variantIndex = Arrays.asList(method.getParameterTypes()).lastIndexOf(first.variantType());
+        int implementationIndex = sourced ? -1 : implementationParameter(method,
+            type -> implementations.stream().allMatch(implementation -> implementation.accepts(type)));
+        int argumentCount = parameterized ? argumentCount(method, sourced, variantIndex, implementationIndex) : 0;
+        String reason = whyUnsupported(method, parameterized, sourced, argumentCount,
+            Math.max(variantIndex, implementationIndex), implementations);
         if (reason != null) {
             return new UnsupportedMember(methodId(method), displayName, legacyMethodName(method),
                 tags, source, reason);
         }
-        return new TestMethod(method, displayName, tags, source, parameterized, implementationIndex);
+        return new TestMethod(method, displayName, tags, source, parameterized, argumentCount, implementationIndex);
     }
 
-    private static @Nullable String whyUnsupported(Method method, boolean parameterized, int implementationIndex,
-            List<Implementation> implementations) {
+    private static int argumentCount(Method method, boolean sourced, int variantIndex, int implementationIndex) {
+        var declared = findAnnotation(method, ComparisonArguments.class);
+        if (declared.isPresent()) {
+            return declared.orElseThrow().value();
+        }
+        if (sourced) {
+            return -1;
+        }
+        if (variantIndex < 0 || implementationIndex < 0) {
+            return Math.max(0, Math.max(variantIndex, implementationIndex));
+        }
+        return Math.min(variantIndex, implementationIndex);
+    }
+
+    private static @Nullable String whyUnsupported(Method method, boolean parameterized, boolean sourced,
+            int argumentCount, int comparisonIndex, List<Implementation> implementations) {
         boolean test = isAnnotated(method, Test.class);
         if (test && parameterized) {
             return "both @Test and @ParameterizedTest";
@@ -289,8 +329,11 @@ record ComparisonClass(Class<?> testClass, String displayName, Set<TestTag> tags
                 || method.getReturnType() != void.class) {
             return "a test method must not be static or private and must return void";
         }
-        if (implementationIndex < 0) {
-            return "no parameter accepts every implementation (" + implementations.stream()
+        if (parameterized && (argumentCount < 0 || argumentCount > method.getParameterCount())) {
+            return "declare @ComparisonArguments with the number of leading arguments supplied by the parameterized source";
+        }
+        if (!sourced && comparisonIndex < argumentCount) {
+            return "no parameter accepts the variant enum or every implementation (" + implementations.stream()
                     .map(Implementation::name).collect(Collectors.joining(", ")) + ")";
         }
         return null;

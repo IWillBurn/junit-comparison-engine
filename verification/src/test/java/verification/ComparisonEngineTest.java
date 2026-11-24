@@ -15,6 +15,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
 import examples.Calc;
+import examples.CalcVariant;
+import org.atpfivt.comparison.api.ClassVariant;
 import org.atpfivt.comparison.api.ComparisonTest;
 import org.jspecify.annotations.NullMarked;
 import org.junit.jupiter.api.AfterAll;
@@ -70,9 +72,9 @@ class ComparisonEngineTest {
                     Buggy ✘ expected: <20> but was: <21>
                 """, run.tree("examples.MulTest"));
         // one CI row per leaf (Surefire uses the legacy reporting name)
-        assertEquals(Set.of("mul(int, int, int, Calc)[1][Good]", "mul(int, int, int, Calc)[1][Buggy]",
-            "mul(int, int, int, Calc)[2][Good]", "mul(int, int, int, Calc)[2][Buggy]", "mulFourByFive(Calc)[Good]",
-            "mulFourByFive(Calc)[Buggy]"), Set.copyOf(run.all().stream().filter(TestIdentifier::isTest)
+        assertEquals(Set.of("mul(int, int, int, Calc)[1][GOOD]", "mul(int, int, int, Calc)[1][BUGGY]",
+            "mul(int, int, int, Calc)[2][GOOD]", "mul(int, int, int, Calc)[2][BUGGY]", "mulFourByFive(Calc)[GOOD]",
+            "mulFourByFive(Calc)[BUGGY]"), Set.copyOf(run.all().stream().filter(TestIdentifier::isTest)
                     .map(TestIdentifier::getLegacyReportingName).toList()));
     }
 
@@ -106,8 +108,8 @@ class ComparisonEngineTest {
     /** IntelliJ's "Rerun Failed Tests": the UniqueIds of the failed leaves. */
     @Test
     void rerunLeaves() {
-        String failedSet = MUL_METHOD + "/[argument-set:#2]/[implementation:Buggy]";
-        String failedTest = MUL + "/[method:mulFourByFive(examples.Calc)]/[implementation:Buggy]";
+        String failedSet = MUL_METHOD + "/[argument-set:#2]/[implementation:BUGGY]";
+        String failedTest = MUL + "/[method:mulFourByFive(examples.Calc)]/[implementation:BUGGY]";
         run = Run.of(selectUniqueId(failedSet), selectUniqueId(failedTest));
         assertEquals(List.of("MulTest > mul(int, int, int, Calc) > [2] 4, 5, 20 > Buggy",
             "MulTest > mulFourByFive(Calc) > Buggy"), run.leaves());
@@ -119,9 +121,9 @@ class ComparisonEngineTest {
     void rerunDifferentImplementationsAcrossArgumentSets() {
         RerunFixture.events.clear();
         String method = classId(RerunFixture.class) + "/[method:calc(int, examples.Calc)]";
-        run = Run.of(selectUniqueId(method + "/[argument-set:#1]/[implementation:Good]"),
-            selectUniqueId(method + "/[argument-set:#2]/[implementation:Buggy]"),
-            selectUniqueId(method + "/[argument-set:#3]/[implementation:Good]"));
+        run = Run.of(selectUniqueId(method + "/[argument-set:#1]/[implementation:GOOD]"),
+            selectUniqueId(method + "/[argument-set:#2]/[implementation:BUGGY]"),
+            selectUniqueId(method + "/[argument-set:#3]/[implementation:GOOD]"));
 
         assertEquals(List.of("RerunFixture > calc(int, Calc) > [1] 1 > Good",
             "RerunFixture > calc(int, Calc) > [2] 2 > Buggy", "RerunFixture > calc(int, Calc) > [3] 3 > Good"),
@@ -136,7 +138,7 @@ class ComparisonEngineTest {
     void rerunLeafInOneClassInvocation() {
         RerunFixture.events.clear();
         String leaf = classId(TemplateFixture.class)
-                + "/[class-invocation:#2]/[method:calc(int, examples.Calc)]/[argument-set:#1]/[implementation:Good]";
+                + "/[class-invocation:#2]/[method:calc(int, examples.Calc)]/[argument-set:#1]/[implementation:GOOD]";
         run = Run.of(selectUniqueId(leaf));
 
         assertEquals(List.of("TemplateFixture > [2] value = 8 > calc(int, Calc) > [1] 1 > Good"), run.leaves());
@@ -148,7 +150,7 @@ class ComparisonEngineTest {
     void rerunPlainLeafInOneClassInvocation() {
         RerunFixture.events.clear();
         String leaf = classId(TemplateFixture.class)
-                + "/[class-invocation:#2]/[method:plain(examples.Calc)]/[implementation:Good]";
+                + "/[class-invocation:#2]/[method:plain(examples.Calc)]/[implementation:GOOD]";
         run = Run.of(selectUniqueId(leaf));
 
         assertEquals(List.of("TemplateFixture > [2] value = 8 > plain(Calc) > Good"), run.leaves());
@@ -161,8 +163,8 @@ class ComparisonEngineTest {
         RerunFixture.events.clear();
         String classId = classId(TemplateFixture.class);
         String method = "/[method:calc(int, examples.Calc)]";
-        run = Run.of(selectUniqueId(classId + method + "/[argument-set:#1]/[implementation:Good]"),
-            selectUniqueId(classId + "/[class-invocation:#2]" + method + "/[argument-set:#3]/[implementation:Good]"));
+        run = Run.of(selectUniqueId(classId + method + "/[argument-set:#1]/[implementation:GOOD]"),
+            selectUniqueId(classId + "/[class-invocation:#2]" + method + "/[argument-set:#3]/[implementation:GOOD]"));
 
         assertEquals(List.of("TemplateFixture > [1] value = 7 > calc(int, Calc) > [1] 1 > Good",
             "TemplateFixture > [2] value = 8 > calc(int, Calc) > [1] 1 > Good",
@@ -173,7 +175,7 @@ class ComparisonEngineTest {
         return "[engine:comparison-tests]/[class:" + type.getName() + "]";
     }
 
-    @ComparisonTest(classes = {Calc.Good.class, Calc.Buggy.class})
+    @ComparisonTest(classes = CalcVariant.class)
     @DisplayName("RerunFixture")
     @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention"})
     static class RerunFixture {
@@ -266,7 +268,7 @@ class ComparisonEngineTest {
         assertTrue(tree.contains("Buggy ↷ Buggy excluded"), tree);
     }
 
-    @ComparisonTest(classes = {Calc.Good.class, Calc.Buggy.class})
+    @ComparisonTest(classes = CalcVariant.class)
     @DisplayName("LeafAnnotations")
     @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention"})
     static class LeafAnnotations {
@@ -332,7 +334,7 @@ class ComparisonEngineTest {
         assertTrue(run.tree(GenericArgument.class.getName()).contains("Good ✔"));
     }
 
-    @ComparisonTest(classes = Calc.Good.class)
+    @ComparisonTest(classes = OnlyGood.class)
     @DisplayName("GenericArgument")
     @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention"})
     static class GenericArgument {
@@ -341,6 +343,20 @@ class ComparisonEngineTest {
         @ValueSource(strings = "hello")
         <T extends CharSequence> void generic(T arg, Calc implementation) {
             assertEquals("hello", arg);
+        }
+    }
+
+    enum OnlyGood implements ClassVariant {
+        GOOD;
+
+        @Override
+        public Class<? extends Calc> implementation() {
+            return Calc.Good.class;
+        }
+
+        @Override
+        public String testName() {
+            return "Good";
         }
     }
 

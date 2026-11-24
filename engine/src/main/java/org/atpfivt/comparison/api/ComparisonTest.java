@@ -13,8 +13,11 @@ import org.apiguardian.api.API;
 
 /**
  * Runs every {@code @Test} and {@code @ParameterizedTest} method of the annotated class on each variant.
- * Declare either implementation {@linkplain #classes() classes} or a {@linkplain #source() source}.
- * The argument is passed as the last method parameter whose type accepts all variants.
+ * Declare variants through an {@linkplain #classes() enum of implementation classes} or a {@linkplain #source() source}.
+ * Either form can supply the current enum constant as a test parameter. With {@code classes}, the implementation
+ * instance is passed to the last method parameter whose type accepts all implementations.
+ * Sources supply parameter resolvers and may implement Jupiter lifecycle callbacks. For parameterized methods
+ * using a source, {@link ComparisonArguments} identifies the parameters supplied by the argument set.
  * Each variant becomes a separate leaf under the method (or under the argument set).
  *
  * <p>The annotation has no Jupiter meta-annotations: such classes are run by the {@code comparison-tests} engine,
@@ -28,13 +31,16 @@ import org.apiguardian.api.API;
 @Inherited
 public @interface ComparisonTest {
 
-    /** Implementation classes with no-arg constructors. Each leaf is named after its implementation class. */
-    Class<?>[] classes() default {};
+    /** An enum whose constants declare implementation classes. */
+    Class<? extends ClassVariant> classes() default ClassVariant.class;
 
-    /** A source with a no-arg constructor that declares variants and creates their arguments. */
+    /** A source with a no-arg constructor that declares variants and may provide Jupiter extensions. */
     Class<? extends ComparisonSource<?>> source() default NoSource.class;
 
     /** Default marker for the form that lists implementation classes. */
-    interface NoSource extends ComparisonSource<Object> {
+    interface NoSource extends ComparisonSource<NoSource.Placeholder> {
+
+        enum Placeholder implements Variant {
+        }
     }
 }

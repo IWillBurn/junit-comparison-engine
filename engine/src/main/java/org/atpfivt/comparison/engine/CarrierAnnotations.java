@@ -23,9 +23,13 @@ import net.bytebuddy.description.annotation.AnnotationDescription;
 import net.bytebuddy.description.annotation.AnnotationDescription.Builder;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
+import org.atpfivt.comparison.api.ComparisonArguments;
 import org.atpfivt.comparison.api.ComparisonTest;
+import org.atpfivt.comparison.api.Skip;
+import org.atpfivt.comparison.engine.ComparisonClass.Implementation;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.ClassOrderer;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Nested;
@@ -56,9 +60,12 @@ final class CarrierAnnotations {
     private static final Set<String> PARAMETERIZED_CLASS_ATTRIBUTES = Arrays
             .stream(ParameterizedClass.class.getDeclaredMethods()).map(Method::getName)
             .collect(Collectors.toUnmodifiableSet());
+    private static final AnnotationDescription SKIPPED_VARIANT = annotation(Disabled.class)
+            .define("value", "Comparison variant disabled by @Skip").build();
 
     private final List<AnnotationDescription> onNestedClass;
     private final List<AnnotationDescription> onLeaf;
+    private final List<String> skippedVariants;
     private final @Nullable SourceParameterResolver sourceResolver;
     private final List<InstanceCondition> instanceConditions = new ArrayList<>();
 
@@ -66,6 +73,9 @@ final class CarrierAnnotations {
     }
 
     CarrierAnnotations(Class<?> userClass, Method method, String displayName, boolean parameterized) {
+        Skip skip = method.getDeclaredAnnotation(Skip.class);
+        skippedVariants = skip == null || AnnotationSupport.isAnnotated(method, Disabled.class)
+                ? List.of() : List.of(skip.value());
         onNestedClass = new ArrayList<>(List.of(
             annotation(Nested.class).build(),
             annotation(DisplayName.class).define("value", displayName).build(),
@@ -99,13 +109,17 @@ final class CarrierAnnotations {
         return annotations;
     }
 
-    List<AnnotationDescription> leaf(int order, String name, int parameterIndex) {
+    List<AnnotationDescription> leaf(int order, Implementation implementation, int parameterIndex) {
         List<AnnotationDescription> annotations = new ArrayList<>(onLeaf);
+        String name = implementation.name();
+        if (skippedVariants.contains(name)) {
+            annotations.add(SKIPPED_VARIANT);
+        }
         annotations.add(annotation(Test.class).build());
         annotations.add(annotation(Order.class).define("value", order).build());
-        annotations.add(annotation(DisplayName.class).define("value", name).build());
+        annotations.add(annotation(DisplayName.class).define("value", implementation.displayName()).build());
         annotations.add(annotation(ImplementationLeaf.class).define("value", name)
-                .define("parameterIndex", parameterIndex).build());
+                .define("parameterIndex", parameterIndex).define("variantType", implementation.variantType()).build());
         return annotations;
     }
 
@@ -142,7 +156,8 @@ final class CarrierAnnotations {
             List<Annotation> execution, Set<Class<? extends Annotation>> path) {
         Class<? extends Annotation> type = annotation.annotationType();
         if (type == Test.class || type == ParameterizedTest.class || type == TestTemplate.class
-                || type == DisplayName.class || type == Order.class || isLanguageAnnotation(type)) {
+                || type == DisplayName.class || type == Order.class || type == Skip.class
+                || type == ComparisonArguments.class || isLanguageAnnotation(type)) {
             return;
         }
         Annotation[] contents = switch (annotation) {

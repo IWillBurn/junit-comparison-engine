@@ -223,7 +223,7 @@ abstract sealed class MirrorNode extends AbstractTestDescriptor
 
         /** {@code parent}: a method node, or an argument set node. */
         ImplementationNode(MirrorNode parent, Implementation implementation) {
-            super(Segment.IMPLEMENTATION.append(parent.getUniqueId(), implementation.name()), implementation.name(),
+            super(Segment.IMPLEMENTATION.append(parent.getUniqueId(), implementation.name()), implementation.displayName(),
                 parent.getSource().orElseThrow(), parent.position().withImplementation(implementation.name()),
                 parent.getLegacyReportingName() + "[" + implementation.name() + "]", parent.getTags());
             this.implementation = implementation;

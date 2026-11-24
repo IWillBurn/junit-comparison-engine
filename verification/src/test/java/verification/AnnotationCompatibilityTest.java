@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.stream.Stream;
 
 import examples.Calc;
+import examples.CalcVariant;
 import org.atpfivt.comparison.api.ComparisonTest;
 import org.jspecify.annotations.NullMarked;
 import org.junit.jupiter.api.Disabled;
@@ -114,7 +115,7 @@ class AnnotationCompatibilityTest {
     @interface ComposedTest {
     }
 
-    @ComparisonTest(classes = {Calc.Good.class, Calc.Buggy.class})
+    @ComparisonTest(classes = CalcVariant.class)
     @DisplayName("ComposedTestFixture")
     @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention"})
     static class ComposedTestFixture {
@@ -155,7 +156,7 @@ class AnnotationCompatibilityTest {
     @interface ComposedParameterizedTest {
     }
 
-    @ComparisonTest(classes = {Calc.Good.class, Calc.Buggy.class})
+    @ComparisonTest(classes = CalcVariant.class)
     @DisplayName("FactoryFixture")
     @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention"})
     static class FactoryFixture {
@@ -199,7 +200,7 @@ class AnnotationCompatibilityTest {
         }
     }
 
-    @ComparisonTest(classes = {Calc.Good.class, Calc.Buggy.class})
+    @ComparisonTest(classes = CalcVariant.class)
     @ParameterizedClass
     @ValueSource(strings = "class input")
     @DisplayName("ClassArgumentsFixture")
@@ -231,7 +232,7 @@ class AnnotationCompatibilityTest {
     @interface LocalFieldSource {
     }
 
-    @ComparisonTest(classes = {Calc.Good.class, Calc.Buggy.class})
+    @ComparisonTest(classes = CalcVariant.class)
     @DisplayName("LocalSourceFixture")
     @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention"})
     static class LocalSourceFixture {
@@ -255,7 +256,7 @@ class AnnotationCompatibilityTest {
         }
     }
 
-    @ComparisonTest(classes = {Calc.Good.class, Calc.Buggy.class})
+    @ComparisonTest(classes = CalcVariant.class)
     @DisplayName("DisabledFixture")
     @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention"})
     static class DisabledFixture {
@@ -279,7 +280,7 @@ class AnnotationCompatibilityTest {
         }
     }
 
-    @ComparisonTest(classes = {Calc.Good.class, Calc.Buggy.class})
+    @ComparisonTest(classes = CalcVariant.class)
     @DisplayName("InvalidConditionFixture")
     @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention"})
     static class InvalidConditionFixture {
@@ -295,7 +296,7 @@ class AnnotationCompatibilityTest {
         }
     }
 
-    @ComparisonTest(classes = {Calc.Good.class, Calc.Buggy.class})
+    @ComparisonTest(classes = CalcVariant.class)
     @DisplayName("ConditionFixture")
     @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention"})
     static class ConditionFixture {

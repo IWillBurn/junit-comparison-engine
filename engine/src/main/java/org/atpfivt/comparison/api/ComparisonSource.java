@@ -3,39 +3,18 @@ package org.atpfivt.comparison.api;
 import static org.apiguardian.api.API.Status.EXPERIMENTAL;
 
 import java.util.List;
-import java.util.Objects;
 
 import org.apiguardian.api.API;
-import org.junit.jupiter.api.extension.ExtensionContext.Store;
+import org.junit.jupiter.api.extension.Extension;
+import org.junit.jupiter.api.extension.ParameterResolver;
 
-/** Declares comparison variants independently of the objects a test receives. */
+/** Selects enum variants and supplies Jupiter extensions for their comparison tests. */
 @API(status = EXPERIMENTAL, since = "0.1")
-public interface ComparisonSource<T> {
+public interface ComparisonSource<V extends Enum<V> & Variant> extends Extension {
 
-    /** The argument type used to find compatible test parameters during discovery. */
-    Class<T> argumentType();
+    /** Lists active variants in discovery order. Keep construction and this method free of resource startup. */
+    List<V> variants();
 
-    /** Lists the variants in discovery order. Keep this method free of resource startup. */
-    List<Variant<T>> variants();
-
-    /** A variant's name is its display name and selection key. Names must be unique, stable, and nonblank. */
-    record Variant<T>(String name, Factory<T> factory) {
-        public Variant {
-            if (name.isBlank()) {
-                throw new IllegalArgumentException("A comparison variant name must not be blank");
-            }
-            Objects.requireNonNull(factory);
-        }
-    }
-
-    @FunctionalInterface
-    interface Factory<T> {
-
-        /**
-         * Creates a non-null argument once per leaf that needs it. The store is shared by the variants of the
-         * test class (or of one class-template invocation). Register shared closeable resources in that store
-         * for Jupiter to close. Returning an argument does not register it for automatic closing.
-         */
-        T create(Store classStore) throws Exception;
-    }
+    /** Supplies the parameter resolvers for one test invocation. The engine also resolves the variant enum itself. */
+    List<ParameterResolver> parameterResolvers(V variant);
 }

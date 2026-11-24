@@ -9,10 +9,10 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 import org.apiguardian.api.API;
+import org.atpfivt.comparison.api.Variant;
 
 /**
- * Put by the engine on every generated leaf method ({@code @Test void Good(...)}): the implementation this leaf runs
- * on. {@link ImplementationResolver} reads it to create the implementation object of the leaf. Not for users.
+ * Identifies the comparison variant of a generated Jupiter test method.
  */
 @API(status = INTERNAL, since = "0.1")
 @Target(ElementType.METHOD)
@@ -23,4 +23,6 @@ public @interface ImplementationLeaf {
     String value();
 
     int parameterIndex();
+
+    Class<? extends Variant> variantType();
 }

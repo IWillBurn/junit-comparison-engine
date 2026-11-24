@@ -53,7 +53,7 @@ class PlatformContractTest {
         String method = ComparisonEngineTest.MUL_METHOD;
         for (String malformed : List.of(
                 method.replace("[method:", "[nested-class:"),
-                method + "/[implementation:Good]",
+                method + "/[implementation:GOOD]",
                 method + "/[argument-set:#01]",
                 method + "/[argument-set:1]")) {
             JUnitException error = assertThrows(JUnitException.class, () -> Run.of(selectUniqueId(malformed)),

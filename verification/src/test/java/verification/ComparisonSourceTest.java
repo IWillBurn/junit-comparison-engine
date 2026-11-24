@@ -10,11 +10,27 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectUniqu
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import examples.CalcVariant;
+import org.atpfivt.comparison.api.ComparisonArguments;
+import org.atpfivt.comparison.api.ComparisonContext;
 import org.atpfivt.comparison.api.ComparisonSource;
 import org.atpfivt.comparison.api.ComparisonTest;
+import org.atpfivt.comparison.api.Variant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.api.extension.AfterAllCallback;
+import org.junit.jupiter.api.extension.AfterClassTemplateInvocationCallback;
+import org.junit.jupiter.api.extension.AfterEachCallback;
+import org.junit.jupiter.api.extension.BeforeAllCallback;
+import org.junit.jupiter.api.extension.BeforeClassTemplateInvocationCallback;
+import org.junit.jupiter.api.extension.BeforeEachCallback;
+import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.api.extension.ExtensionContext.Namespace;
+import org.junit.jupiter.api.extension.ExtensionContext.StoreScope;
+import org.junit.jupiter.api.extension.ParameterContext;
+import org.junit.jupiter.api.extension.ParameterResolver;
+import org.junit.jupiter.api.extension.support.TypeBasedParameterResolver;
 import org.junit.jupiter.params.Parameter;
 import org.junit.jupiter.params.ParameterizedClass;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -45,6 +61,13 @@ class ComparisonSourceTest {
         assertEquals(12, Source.arguments.get());
         assertEquals(2, Resource.opened.get());
         assertEquals(2, Resource.closed.get());
+        assertEquals(1, Source.beforeAll.get());
+        assertEquals(1, Source.afterAll.get());
+        assertEquals(2, Source.beforeInvocation.get());
+        assertEquals(2, Source.afterInvocation.get());
+        assertEquals(12, Source.beforeEach.get());
+        assertEquals(12, Source.afterEach.get());
+        assertEquals(1, RunResource.closed.get());
 
         TestIdentifier selected = full.all().stream().filter(TestIdentifier::isTest)
                 .filter(id -> id.getDisplayName().equals("via proxy"))
@@ -56,6 +79,13 @@ class ComparisonSourceTest {
         assertEquals(1, Source.arguments.get());
         assertEquals(1, Resource.opened.get());
         assertEquals(1, Resource.closed.get());
+        assertEquals(1, Source.beforeAll.get());
+        assertEquals(1, Source.afterAll.get());
+        assertEquals(1, Source.beforeInvocation.get());
+        assertEquals(1, Source.afterInvocation.get());
+        assertEquals(1, Source.beforeEach.get());
+        assertEquals(1, Source.afterEach.get());
+        assertEquals(1, RunResource.closed.get());
     }
 
     private static void assertSuccessful(Run run, int count) {
@@ -65,7 +95,7 @@ class ComparisonSourceTest {
         assertEquals(List.of(), run.violations);
     }
 
-    @ComparisonTest(classes = Object.class, source = Source.class)
+    @ComparisonTest(classes = CalcVariant.class, source = Source.class)
     static class ClassesAndSource {
     }
 
@@ -88,48 +118,135 @@ class ComparisonSourceTest {
         }
 
         @Test
-        void plain(Argument argument, TestInfo info) {
+        void plain(Argument argument, Endpoint endpoint, Backend variant, TestInfo info) {
             assertSame(constructed, argument);
-            assertEquals(info.getDisplayName(), argument.name());
+            assertSame(variant, argument.variant());
+            assertSame(variant, endpoint.variant());
+            assertEquals(info.getDisplayName(), variant.testName());
             assertFalse(argument.resource().isClosed);
         }
 
         @ParameterizedTest
         @ValueSource(ints = { 1, 2 })
-        void parameterized(int number, Argument argument, TestInfo info) {
-            plain(argument, info);
+        @ComparisonArguments(1)
+        void parameterized(int number, Argument argument, Endpoint endpoint, Backend variant, TestInfo info) {
+            plain(argument, endpoint, variant, info);
             argument.resource().use(value);
         }
     }
 
-    record Argument(String name, Resource resource) {
+    record Argument(Backend variant, Resource resource) {
     }
 
-    static class Source implements ComparisonSource<Argument> {
+    record Endpoint(Backend variant) {
+    }
+
+    enum Backend implements Variant {
+        DIRECT,
+        PROXY {
+            @Override
+            public String testName() {
+                return "via proxy";
+            }
+        }
+    }
+
+    static class Source implements ComparisonSource<Backend>, BeforeAllCallback, AfterAllCallback,
+            BeforeClassTemplateInvocationCallback, AfterClassTemplateInvocationCallback,
+            BeforeEachCallback, AfterEachCallback {
+        private static final Namespace NAMESPACE = Namespace.create(Source.class);
         static final AtomicInteger arguments = new AtomicInteger();
+        static final AtomicInteger beforeAll = new AtomicInteger();
+        static final AtomicInteger afterAll = new AtomicInteger();
+        static final AtomicInteger beforeInvocation = new AtomicInteger();
+        static final AtomicInteger afterInvocation = new AtomicInteger();
+        static final AtomicInteger beforeEach = new AtomicInteger();
+        static final AtomicInteger afterEach = new AtomicInteger();
+        private boolean started;
 
         static void reset() {
             arguments.set(0);
+            beforeAll.set(0);
+            afterAll.set(0);
+            beforeInvocation.set(0);
+            afterInvocation.set(0);
+            beforeEach.set(0);
+            afterEach.set(0);
             Resource.opened.set(0);
             Resource.closed.set(0);
+            RunResource.closed.set(0);
         }
 
         @Override
-        public Class<Argument> argumentType() {
-            return Argument.class;
+        public void beforeAll(ExtensionContext context) {
+            assertFalse(started);
+            started = true;
+            beforeAll.incrementAndGet();
+            context.getStore(StoreScope.EXECUTION_REQUEST, NAMESPACE)
+                    .computeIfAbsent(RunResource.class, key -> new RunResource(), RunResource.class);
         }
 
         @Override
-        public List<Variant<Argument>> variants() {
-            return List.of(variant("direct"), variant("via proxy"));
+        public void afterAll(ExtensionContext context) {
+            assertTrue(started);
+            afterAll.incrementAndGet();
         }
 
-        private static Variant<Argument> variant(String name) {
-            return new Variant<>(name, store -> {
-                var resource = store.computeIfAbsent(Resource.class, key -> new Resource(), Resource.class);
-                arguments.incrementAndGet();
-                return new Argument(name, resource);
+        @Override
+        public void beforeClassTemplateInvocation(ExtensionContext context) {
+            beforeInvocation.incrementAndGet();
+        }
+
+        @Override
+        public void afterClassTemplateInvocation(ExtensionContext context) {
+            afterInvocation.incrementAndGet();
+        }
+
+        @Override
+        public void beforeEach(ExtensionContext context) {
+            assertTrue(started);
+            assertTrue(ComparisonContext.variant(context).orElseThrow() instanceof Backend);
+            beforeEach.incrementAndGet();
+        }
+
+        @Override
+        public void afterEach(ExtensionContext context) {
+            afterEach.incrementAndGet();
+        }
+
+        @Override
+        public List<Backend> variants() {
+            return List.of(Backend.values());
+        }
+
+        @Override
+        public List<ParameterResolver> parameterResolvers(Backend variant) {
+            assertTrue(started);
+            return List.of(new TypeBasedParameterResolver<Argument>() {
+                @Override
+                public Argument resolveParameter(ParameterContext parameter, ExtensionContext context) {
+                    var classStore = ComparisonContext.classContext(context).getStore(NAMESPACE);
+                    var resource = classStore.computeIfAbsent(Resource.class, key -> new Resource(), Resource.class);
+                    return context.getStore(NAMESPACE).computeIfAbsent(Argument.class, key -> {
+                        arguments.incrementAndGet();
+                        return new Argument(variant, resource);
+                    }, Argument.class);
+                }
+            }, new TypeBasedParameterResolver<Endpoint>() {
+                @Override
+                public Endpoint resolveParameter(ParameterContext parameter, ExtensionContext context) {
+                    return new Endpoint(variant);
+                }
             });
+        }
+    }
+
+    static class RunResource implements AutoCloseable {
+        static final AtomicInteger closed = new AtomicInteger();
+
+        @Override
+        public void close() {
+            closed.incrementAndGet();
         }
     }
 

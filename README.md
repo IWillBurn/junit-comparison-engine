@@ -14,7 +14,7 @@ cd junit-comparison-engine
 mvn clean verify
 ```
 
-The [multiplication example](examples/src/test/java/examples/MulTest.java) runs two input rows against two implementations of [`Calc`](examples/src/test/java/examples/Calc.java).
+The multiplication example runs two input rows against the implementations associated with `CalcVariant.GOOD` and `CalcVariant.BUGGY`. [MulTest.java](examples/src/test/java/examples/MulTest.java) · [CalcVariant.java](examples/src/test/java/examples/CalcVariant.java)
 
 ```java
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -23,7 +23,7 @@ import org.atpfivt.comparison.api.ComparisonTest;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
-@ComparisonTest(classes = { Calc.Good.class, Calc.Buggy.class })
+@ComparisonTest(classes = CalcVariant.class)
 class MulTest {
     @ParameterizedTest(quoteTextArguments = false)
     @CsvSource({ "2, 3, 6", "4, 5, 20" })
@@ -84,8 +84,12 @@ Place your comparison class under `src/test/java` and run `mvn test` with Maven 
 
 ## Choose how tests get their arguments
 
-- **`@ComparisonTest(classes = { … })`** supplies an instance of each implementation. Each implementation has a no-argument constructor. The instance belongs to one test invocation and is also available to its lifecycle methods.
-- **`@ComparisonTest(source = MySource.class)`** supplies arguments from named factories. Use a [`ComparisonSource<T>`](engine/src/main/java/org/atpfivt/comparison/api/ComparisonSource.java) when a test needs a configured client or a value backed by a shared resource. Factories receive a Jupiter store scoped to the test class.
+- **`@ComparisonTest(classes = CalcVariant.class)`** runs all constants of a `ClassVariant` enum. Each constant supplies an implementation class with a no-argument constructor. The instance belongs to one test invocation and is also available to its lifecycle methods.
+- **`@ComparisonTest(source = MySource.class)`** runs the constants selected by `ComparisonSource<V>.variants()`. The source supplies Jupiter parameter resolvers for each selected variant. [ComparisonSource.java](engine/src/main/java/org/atpfivt/comparison/api/ComparisonSource.java)
+
+Both forms can pass the current enum constant to the test. Use `@Skip("BUGGY")` or `@Skip({"H2", "HANA"})` on a method to skip variants by their enum constant names.
+
+A source can implement Jupiter `BeforeAllCallback` and `AfterAllCallback` for the comparison class, the class-template invocation callbacks for each invocation of a parameterized class, and `BeforeEachCallback` and `AfterEachCallback` for individual tests. Use the Jupiter store to own closeable resources. `ComparisonContext.classContext(context)` locates the store's owning class or class-template invocation from a test or its resolver.
 
 Use either form with `@Test` or `@ParameterizedTest`. Read the [API and compatibility guide](API.md) for parameter order, resource lifetime, and extension behavior.
 

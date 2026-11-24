@@ -35,12 +35,16 @@ import net.bytebuddy.implementation.LoadedTypeInitializer;
 import net.bytebuddy.implementation.MethodCall;
 import net.bytebuddy.jar.asm.Opcodes;
 import net.bytebuddy.matcher.ElementMatchers;
+import org.atpfivt.comparison.api.ComparisonTest;
 import org.atpfivt.comparison.engine.ComparisonClass.Implementation;
 import org.atpfivt.comparison.engine.ComparisonClass.TestMethod;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.extension.Extension;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.ParameterResolver;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.platform.commons.support.AnnotationSupport;
+import org.junit.platform.commons.support.ReflectionSupport;
 
 /**
  * Generates a subclass of the user's test class in its package and loader. For example, a parameterized
@@ -50,8 +54,8 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  *     @Nested @ParameterizedClass @CsvSource({"2, 3", "4, 5"})
  *     class mul {
  *         mul(int a, int b) { ... } // hold one argument set
- *         @Test @ImplementationLeaf(value = "Good", parameterIndex = 0)
- *         void Good(Calc calc) { MulTest$$Comparison$1.this.mul(a, b, calc); }
+ *         @Test @ImplementationLeaf(value = "GOOD", parameterIndex = 0, variantType = CalcVariant.class)
+ *         void GOOD(Calc calc) { MulTest$$Comparison$1.this.mul(a, b, calc); }
  *     }
  * }
  * }</pre>
@@ -84,16 +88,18 @@ final class CarrierGenerator {
                 .subclass(userClass, ConstructorStrategy.Default.IMITATE_SUPER_CLASS.withInheritedAnnotations())
                 .name(carrierName)
                 .annotateType(CarrierAnnotations.carrier(userClass, model.displayName()));
-        if (model.implementations().getFirst().factory() == null) {
+        if (model.implementations().getFirst().implementationType() != null) {
             carrier = carrier.annotateType(AnnotationDescription.Builder.ofType(ExtendWith.class)
                     .defineTypeArray("value", ImplementationResolver.class).build());
         }
         else {
-            carrier = carrier.defineField("$comparisonImplementationResolver", ParameterResolver.class,
+            var declaration = AnnotationSupport.findAnnotation(userClass, ComparisonTest.class).orElseThrow();
+            var source = ReflectionSupport.newInstance(declaration.source());
+            carrier = carrier.defineField("$comparisonSourceExtension", Extension.class,
                         Visibility.PACKAGE_PRIVATE, Ownership.STATIC)
                     .annotateField(AnnotationDescription.Builder.ofType(RegisterExtension.class).build())
-                    .initializer(new LoadedTypeInitializer.ForStaticField("$comparisonImplementationResolver",
-                        new ImplementationResolver(model.implementations())));
+                    .initializer(new LoadedTypeInitializer.ForStaticField("$comparisonSourceExtension",
+                        new ComparisonSourceExtension<>(source, model.implementations())));
         }
         // The nested classes need the carrier's type before we can add them to it.
         TypeDescription carrierType = carrier.toTypeDescription();
@@ -165,11 +171,10 @@ final class CarrierGenerator {
             this.method = test.method();
             Parameter[] declaredParameters = method.getParameters();
             List<ParameterShape> parameters = Arrays.stream(declaredParameters).map(ParameterShape::of).toList();
-            // Parameters before the implementation belong to the argument set. Jupiter resolves the rest per leaf.
-            int argumentCount = test.parameterized() ? test.implementationIndex() : 0;
+            int argumentCount = test.argumentCount();
             this.arguments = parameters.subList(0, argumentCount);
             this.argumentFields = IntStream.range(0, argumentCount).mapToObj(i -> "argument" + i).toArray(String[]::new);
-            this.namedParameters = declaredParameters[0].isNamePresent();
+            this.namedParameters = declaredParameters.length > 0 && declaredParameters[0].isNamePresent();
             this.leafParameters = parameters.subList(argumentCount, parameters.size());
             this.annotations = new CarrierAnnotations(userClass, method, test.displayName(), test.parameterized());
         }
@@ -235,7 +240,7 @@ final class CarrierGenerator {
                     .withField(argumentFields).withAllArguments();
             return withParameters(builder.defineMethod(name, void.class, Visibility.PACKAGE_PRIVATE), leafParameters)
                     .intercept(call)
-                    .annotateMethod(annotations.leaf(order, implementation.name(),
+                    .annotateMethod(annotations.leaf(order, implementation,
                         plan.method().implementationIndex() - arguments.size()));
         }
 
