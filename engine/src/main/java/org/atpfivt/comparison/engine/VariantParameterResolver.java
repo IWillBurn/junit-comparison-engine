@@ -1,14 +1,11 @@
 package org.atpfivt.comparison.engine;
 
-import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toUnmodifiableMap;
-import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import java.lang.reflect.Constructor;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 import org.atpfivt.comparison.api.ComparisonSource;
 import org.atpfivt.comparison.api.Variant;
@@ -19,14 +16,12 @@ import org.junit.jupiter.api.extension.ExtensionContext.Namespace;
 import org.junit.jupiter.api.extension.ParameterContext;
 import org.junit.jupiter.api.extension.ParameterResolutionException;
 import org.junit.jupiter.api.extension.ParameterResolver;
-import org.junit.platform.commons.support.ReflectionSupport;
 
 /** Supplies the current enum constant and the arguments of that variant to Jupiter. */
-record VariantParameterResolver(Map<String, Implementation> variants, Set<Class<?>> implementationTypes,
-        @Nullable ComparisonSource<?> source) implements ParameterResolver {
+record VariantParameterResolver(Map<String, Variant> variants, ComparisonSource<?> source)
+        implements ParameterResolver {
 
     private static final Namespace NAMESPACE = Namespace.create(VariantParameterResolver.class);
-    private static final Object IMPLEMENTATION = new Object();
 
     private record Resolvers(List<ParameterResolver> entries) {
     }
@@ -34,10 +29,8 @@ record VariantParameterResolver(Map<String, Implementation> variants, Set<Class<
     private record SelectedResolver(ParameterResolver delegate) {
     }
 
-    VariantParameterResolver(List<Implementation> implementations, @Nullable ComparisonSource<?> source) {
-        this(implementations.stream().collect(toUnmodifiableMap(Implementation::name, identity())),
-            source == null ? implementations.stream().map(Implementation::implementationType)
-                    .map(Objects::requireNonNull).collect(toUnmodifiableSet()) : Set.of(), source);
+    VariantParameterResolver(List<Implementation> implementations, ComparisonSource<?> source) {
+        this(implementations.stream().collect(toUnmodifiableMap(Implementation::name, Implementation::variant)), source);
     }
 
     @Override
@@ -56,49 +49,27 @@ record VariantParameterResolver(Map<String, Implementation> variants, Set<Class<
             return false; // The generated nested constructor takes Jupiter's argument set.
         }
         var marker = leaf.getAnnotation(ImplementationLeaf.class);
-        var parameterType = parameter.getParameter().getType();
-        if (parameterType == marker.variantType()) {
-            return true;
-        }
-        if (source != null) {
-            return selectResolver(parameter, context, marker.value());
-        }
-        if (executable.equals(leaf)) {
-            return parameter.getIndex() == marker.parameterIndex();
-        }
-        if (executable instanceof Constructor<?>) {
-            return ComparisonClass.implementationParameter(executable, this::acceptsAll) == parameter.getIndex();
-        }
-        return acceptsAll(parameterType);
+        return parameter.getParameter().getType() == marker.variantType()
+                || selectResolver(parameter, context, marker.value());
     }
 
     @Override
     public @Nullable Object resolveParameter(ParameterContext parameter, ExtensionContext context) {
         var marker = Objects.requireNonNull(context.getRequiredTestMethod().getAnnotation(ImplementationLeaf.class));
-        var variant = variants.get(marker.value());
         if (parameter.getParameter().getType() == marker.variantType()) {
-            return variant.variant();
+            return variants.get(marker.value());
         }
-        var store = context.getStore(NAMESPACE);
-        if (source == null) {
-            return store.computeIfAbsent(IMPLEMENTATION,
-                key -> ReflectionSupport.newInstance(Objects.requireNonNull(variant.implementationType())), Object.class);
-        }
-        var selected = store.remove(parameter.getParameter(), SelectedResolver.class);
+        var selected = context.getStore(NAMESPACE).remove(parameter.getParameter(), SelectedResolver.class);
         if (selected == null) {
             throw new ParameterResolutionException("No resolver for " + parameter.getParameter());
         }
         return selected.delegate().resolveParameter(parameter, context);
     }
 
-    private boolean acceptsAll(Class<?> parameterType) {
-        return implementationTypes.stream().allMatch(parameterType::isAssignableFrom);
-    }
-
     private boolean selectResolver(ParameterContext parameter, ExtensionContext context, String name) {
         var store = context.getStore(NAMESPACE);
         var resolvers = store.computeIfAbsent(name,
-            key -> resolversFor(Objects.requireNonNull(source), variants.get(key).variant()), Resolvers.class);
+            key -> resolversFor(source, variants.get(key)), Resolvers.class);
         ParameterResolver match = null;
         for (var resolver : resolvers.entries()) {
             if (resolver.supportsParameter(parameter, context)) {

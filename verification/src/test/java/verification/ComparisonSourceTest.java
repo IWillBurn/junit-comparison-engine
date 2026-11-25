@@ -11,7 +11,6 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectUniqu
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import examples.CalcVariant;
 import org.atpfivt.comparison.api.ComparisonArguments;
 import org.atpfivt.comparison.api.ComparisonContext;
 import org.atpfivt.comparison.api.ComparisonSource;
@@ -44,13 +43,6 @@ import org.junit.platform.launcher.core.LauncherFactory;
 
 @NullMarked
 class ComparisonSourceTest {
-
-    @Test
-    void rejectsClassesTogetherWithSource() {
-        Run run = Run.of(selectClass(ClassesAndSource.class));
-        String tree = run.tree(ClassesAndSource.class.getName());
-        assertTrue(tree.endsWith("declare either implementation classes or a source\n"), tree);
-    }
 
     @Test
     void createsArgumentsPerLeafAndSharesResourcesPerClassInvocation() {
@@ -99,10 +91,6 @@ class ComparisonSourceTest {
         assertFalse(tree.contains("✘"), tree);
         assertEquals(count, run.leaves().size(), tree);
         assertEquals(List.of(), run.violations);
-    }
-
-    @ComparisonTest(classes = CalcVariant.class, source = Source.class)
-    static class ClassesAndSource {
     }
 
     @ComparisonTest(source = Source.class)

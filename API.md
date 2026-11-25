@@ -1,12 +1,12 @@
 # API and compatibility
 
-`@ComparisonTest` is a class annotation in `org.atpfivt.comparison.api`. Set `classes` to a `ClassVariant` enum or set `source` to a `ComparisonSource<V>` implementation that selects active variants. The test class must allow subclassing so the engine can generate its Jupiter test class.
+`@ComparisonTest` is a class annotation in `org.atpfivt.comparison.api`. Set `source` to a `ComparisonSource<V>` implementation that selects active enum variants. The test class must allow subclassing so the engine can generate its Jupiter test class.
 
 ## Method parameters
 
-Both forms can supply the current enum constant to a test parameter of the enum type. With `classes`, the engine also supplies the last parameter that accepts all implementation classes. With `source`, the variant's `ParameterResolver`s supply any parameters they support. Standard Jupiter resolvers are also available.
+The engine supplies the current enum constant to a test parameter of the enum type. A variant's `ParameterResolver`s supply any parameters they support. Standard Jupiter resolvers are also available.
 
-For `@ParameterizedTest`, declare argument-set parameters first, followed by parameters supplied by the engine or other Jupiter resolvers. `@ComparisonArguments(n)` counts the leading argument-set parameters. It is required with `source`. With `classes`, the engine infers the boundary from the comparison parameters unless you specify the count explicitly.
+For `@ParameterizedTest`, declare argument-set parameters first, followed by parameters supplied by the engine or other Jupiter resolvers. Use `@ComparisonArguments(n)` to declare the number of leading argument-set parameters.
 
 ```java
 void mul(int a, int b, int expected, Calc calc, TestInfo info) { /* ... */ }
@@ -16,8 +16,7 @@ The argument source runs once per method for each invocation of the enclosing te
 
 ## Lifecycle
 
-- With `classes`, the engine creates an implementation when the leaf first needs it and reuses that instance within that leaf. Jupiter closes implementations that implement `AutoCloseable` after the leaf finishes.
-- With `source`, the engine calls the source's no-argument constructor and reads `variants()` during discovery. Keep discovery free of resource startup. Execution creates a fresh source instance and routes parameter requests to the variant's resolvers.
+- The engine calls the source's no-argument constructor and reads `variants()` during discovery. Keep discovery free of resource startup. Execution creates a fresh source instance and routes parameter requests to the variant's resolvers.
 - A source can implement Jupiter callbacks for the comparison class, a class-template invocation, or an individual test. Use `ComparisonContext.classContext(context)` to find the owning class or class-template invocation store. Register shared `AutoCloseable` resources in the store for Jupiter to close.
 - Under the default `PER_METHOD` lifecycle, the test constructor can receive the variant and its arguments. `@BeforeEach`, the test, and `@AfterEach` also have access to them. Under `PER_CLASS`, the constructor runs at class scope. Variant-specific parameters are available in leaf methods and per-test callbacks.
 
@@ -27,7 +26,7 @@ See the [source lifecycle verification](verification/src/test/java/verification/
 
 `@Test`, `@ParameterizedTest`, `@ParameterizedClass`, and `@TestInstance` are supported. Execution annotations such as `@Disabled`, `@Tag`, `@Timeout`, and `@ExtendWith` apply to the generated implementation tests. Composed test annotations and instance-based `@EnabledIf` and `@DisabledIf` methods are covered by the [compatibility tests](verification/src/test/java/verification/AnnotationCompatibilityTest.java).
 
-A comparison class reports a skip with a reason for `@Nested` classes, `@TestFactory` methods, `@RepeatedTest` methods and custom `@TestTemplate` methods. The `classes` form also reports a skip if neither the enum nor an implementation can be supplied to any test parameter.
+A comparison class reports a skip with a reason for `@Nested` classes, `@TestFactory` methods, `@RepeatedTest` methods and custom `@TestTemplate` methods.
 
 `@Skip` selects variants by enum constant name on individual test methods. `TestInfo.getDisplayName()` returns `Variant.testName()`. Jupiter metadata exposed through `TestInfo` and `ExtensionContext` can identify generated classes and methods. Runners receive the original method as the test source for navigation.
 

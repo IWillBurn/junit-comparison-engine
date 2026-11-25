@@ -108,7 +108,7 @@ final class CarrierAnnotations {
         return annotations;
     }
 
-    List<AnnotationDescription> leaf(int order, Implementation implementation, int parameterIndex) {
+    List<AnnotationDescription> leaf(int order, Implementation implementation) {
         List<AnnotationDescription> annotations = new ArrayList<>(onLeaf);
         String name = implementation.name();
         if (skippedVariants.contains(name)) {
@@ -118,7 +118,7 @@ final class CarrierAnnotations {
         annotations.add(annotation(Order.class).define("value", order).build());
         annotations.add(annotation(DisplayName.class).define("value", implementation.displayName()).build());
         annotations.add(annotation(ImplementationLeaf.class).define("value", name)
-                .define("parameterIndex", parameterIndex).define("variantType", implementation.variantType()).build());
+                .define("variantType", implementation.variantType()).build());
         return annotations;
     }
 

@@ -15,8 +15,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
 import examples.Calc;
-import examples.CalcVariant;
-import org.atpfivt.comparison.api.ClassVariant;
+import examples.CalcSource;
+import org.atpfivt.comparison.api.ComparisonArguments;
 import org.atpfivt.comparison.api.ComparisonTest;
 import org.jspecify.annotations.NullMarked;
 import org.junit.jupiter.api.AfterAll;
@@ -175,7 +175,7 @@ class ComparisonEngineTest {
         return "[engine:comparison-tests]/[class:" + type.getName() + "]";
     }
 
-    @ComparisonTest(classes = CalcVariant.class)
+    @ComparisonTest(source = CalcSource.class)
     @DisplayName("RerunFixture")
     @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention"})
     static class RerunFixture {
@@ -222,6 +222,7 @@ class ComparisonEngineTest {
         }
 
         @ParameterizedTest
+        @ComparisonArguments(1)
         @MethodSource("values")
         void calc(int value, Calc subject) {
             assertSame(implementation, subject);
@@ -269,7 +270,7 @@ class ComparisonEngineTest {
         assertTrue(tree.contains("Buggy ↷ Buggy excluded"), tree);
     }
 
-    @ComparisonTest(classes = CalcVariant.class)
+    @ComparisonTest(source = CalcSource.class)
     @DisplayName("LeafAnnotations")
     @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention"})
     static class LeafAnnotations {
@@ -289,6 +290,7 @@ class ComparisonEngineTest {
         }
 
         @ParameterizedTest
+        @ComparisonArguments(1)
         @MethodSource("cases")
         @Timeout(5)
         @ExtendWith(LeafExtension.class)
@@ -331,34 +333,22 @@ class ComparisonEngineTest {
     @Test
     void parameterizedMethodWithTypeVariable() {
         run = Run.of(selectClass(GenericArgument.class));
-        assertEquals(List.of("GenericArgument > generic(CharSequence, Calc) > [1] \"hello\" > Good"), run.leaves());
-        assertTrue(run.tree(GenericArgument.class.getName()).contains("Good ✔"));
+        assertEquals(List.of("GenericArgument > generic(CharSequence, Calc) > [1] \"hello\" > Good",
+            "GenericArgument > generic(CharSequence, Calc) > [1] \"hello\" > Buggy"), run.leaves());
+        String tree = run.tree(GenericArgument.class.getName());
+        assertTrue(tree.contains("Good ✔") && tree.contains("Buggy ✔"), tree);
     }
 
-    @ComparisonTest(classes = OnlyGood.class)
+    @ComparisonTest(source = CalcSource.class)
     @DisplayName("GenericArgument")
     @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention"})
     static class GenericArgument {
 
         @ParameterizedTest
+        @ComparisonArguments(1)
         @ValueSource(strings = "hello")
         <T extends CharSequence> void generic(T arg, Calc implementation) {
             assertEquals("hello", arg);
-        }
-    }
-
-    @NullMarked
-    enum OnlyGood implements ClassVariant {
-        GOOD;
-
-        @Override
-        public Class<? extends Calc> implementation() {
-            return Calc.Good.class;
-        }
-
-        @Override
-        public String testName() {
-            return "Good";
         }
     }
 

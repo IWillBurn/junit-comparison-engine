@@ -6,9 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass;
 
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 
-import org.atpfivt.comparison.api.ClassVariant;
 import org.atpfivt.comparison.api.ComparisonArguments;
 import org.atpfivt.comparison.api.ComparisonContext;
 import org.atpfivt.comparison.api.ComparisonSource;
@@ -31,94 +29,17 @@ import org.junit.jupiter.params.provider.ValueSource;
 class VariantSkipTest {
 
     @Test
-    void skipsByNameWhenTwoVariantsUseTheSameClass() {
-        Argument.created.set(0);
-        Run run = Run.of(selectClass(FromClasses.class));
-        String tree = run.tree(FromClasses.class.getName());
-        assertEquals(3, Argument.created.get(), tree);
-        assertEquals(4, run.leaves().size(), tree);
-        assertTrue(run.leaves().stream().allMatch(path -> path.endsWith(" > PRIMARY")), tree);
-        assertTrue(tree.contains("Secondary backend ↷ Comparison variant disabled by @Skip"), tree);
-        assertTrue(tree.contains("Secondary backend ↷ whole method disabled"), tree);
-        assertFalse(tree.contains("✘"), tree);
-        assertEquals(List.of(), run.violations);
-    }
-
-    @Test
     void skipsSourceVariantsOnEveryArgumentSetBeforeCreatingTheirArguments() {
         Run run = Run.of(selectClass(FromSource.class));
         String tree = run.tree(FromSource.class.getName());
-        assertEquals(2, run.leaves().size(), tree);
+        assertEquals(3, run.leaves().size(), tree);
         assertTrue(run.leaves().stream().allMatch(path -> path.endsWith(" > DIRECT")), tree);
         assertFalse(run.all().stream().anyMatch(node -> node.getDisplayName().equals(Backend.UNAVAILABLE.testName())));
-        assertEquals(2, tree.lines()
+        assertEquals(3, tree.lines()
                 .filter(line -> line.contains("Via proxy ↷ Comparison variant disabled by @Skip")).count(), tree);
+        assertTrue(tree.contains("Via proxy ↷ whole method disabled"), tree);
         assertFalse(tree.contains("✘"), tree);
         assertEquals(List.of(), run.violations);
-    }
-
-    @ComparisonTest(classes = ClassBackend.class)
-    @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention", "ClassCanBeRecord"})
-    static class FromClasses {
-        private final ClassBackend constructed;
-
-        FromClasses(ClassBackend constructed) {
-            this.constructed = constructed;
-        }
-
-        @Test
-        @Skip("SECONDARY")
-        void comparison(Argument argument, ClassBackend variant) {
-            assertEquals(ClassBackend.PRIMARY, variant);
-            assertEquals(constructed, variant);
-        }
-
-        @ParameterizedTest
-        @ValueSource(strings = {"first", "second"})
-        @Skip("SECONDARY")
-        void parameterized(String input, ClassBackend variant, Argument argument) {
-            assertTrue(List.of("first", "second").contains(input));
-            comparison(argument, variant);
-        }
-
-        @ParameterizedTest
-        @EnumSource(value = ClassBackend.class, names = "SECONDARY")
-        @ComparisonArguments(1)
-        @Skip("SECONDARY")
-        void enumArgument(ClassBackend input, ClassBackend variant) {
-            assertEquals(ClassBackend.SECONDARY, input);
-            assertEquals(ClassBackend.PRIMARY, variant);
-        }
-
-        @Test
-        @Disabled("whole method disabled")
-        @Skip("SECONDARY")
-        void disabled(Argument argument) {
-            throw new AssertionError("disabled test was invoked");
-        }
-    }
-
-    enum ClassBackend implements ClassVariant {
-        PRIMARY,
-        SECONDARY {
-            @Override
-            public String testName() {
-                return "Secondary backend";
-            }
-        };
-
-        @Override
-        public Class<Argument> implementation() {
-            return Argument.class;
-        }
-    }
-
-    static class Argument {
-        static final AtomicInteger created = new AtomicInteger();
-
-        Argument() {
-            created.incrementAndGet();
-        }
     }
 
     @ComparisonTest(source = Source.class)
@@ -131,6 +52,22 @@ class VariantSkipTest {
         void comparison(String input, String argument) {
             assertTrue(List.of("first", "second").contains(input));
             assertEquals("direct", argument);
+        }
+
+        @ParameterizedTest
+        @EnumSource(value = Backend.class, names = "PROXY")
+        @ComparisonArguments(1)
+        @Skip("PROXY")
+        void enumArgument(Backend input, Backend variant) {
+            assertEquals(Backend.PROXY, input);
+            assertEquals(Backend.DIRECT, variant);
+        }
+
+        @Test
+        @Disabled("whole method disabled")
+        @Skip("PROXY")
+        void disabled() {
+            throw new AssertionError("disabled test was invoked");
         }
     }
 

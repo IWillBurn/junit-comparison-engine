@@ -15,7 +15,8 @@ import java.util.List;
 import java.util.stream.Stream;
 
 import examples.Calc;
-import examples.CalcVariant;
+import examples.CalcSource;
+import org.atpfivt.comparison.api.ComparisonArguments;
 import org.atpfivt.comparison.api.ComparisonTest;
 import org.jspecify.annotations.NullMarked;
 import org.junit.jupiter.api.Disabled;
@@ -115,7 +116,7 @@ class AnnotationCompatibilityTest {
     @interface ComposedTest {
     }
 
-    @ComparisonTest(classes = CalcVariant.class)
+    @ComparisonTest(source = CalcSource.class)
     @DisplayName("ComposedTestFixture")
     @SuppressWarnings("NewClassNamingConvention")
     static class ComposedTestFixture {
@@ -156,7 +157,7 @@ class AnnotationCompatibilityTest {
     @interface ComposedParameterizedTest {
     }
 
-    @ComparisonTest(classes = CalcVariant.class)
+    @ComparisonTest(source = CalcSource.class)
     @DisplayName("FactoryFixture")
     @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention"})
     static class FactoryFixture {
@@ -169,6 +170,7 @@ class AnnotationCompatibilityTest {
         }
 
         @ComposedParameterizedTest
+        @ComparisonArguments(1)
         void compare(Object input, Calc implementation) {
             assertEquals("source input", input);
         }
@@ -200,7 +202,7 @@ class AnnotationCompatibilityTest {
         }
     }
 
-    @ComparisonTest(classes = CalcVariant.class)
+    @ComparisonTest(source = CalcSource.class)
     @ParameterizedClass
     @ValueSource(strings = "class input")
     @DisplayName("ClassArgumentsFixture")
@@ -232,7 +234,7 @@ class AnnotationCompatibilityTest {
     @interface LocalFieldSource {
     }
 
-    @ComparisonTest(classes = CalcVariant.class)
+    @ComparisonTest(source = CalcSource.class)
     @DisplayName("LocalSourceFixture")
     @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention"})
     static class LocalSourceFixture {
@@ -245,24 +247,27 @@ class AnnotationCompatibilityTest {
         }
 
         @ParameterizedTest
+        @ComparisonArguments(1)
         @LocalSource
         void compare(String input, Calc implementation) {
             assertEquals("local", input);
         }
 
         @ParameterizedTest
+        @ComparisonArguments(1)
         @LocalFieldSource
         void compareField(String input, Calc implementation) {
             assertEquals("field", input);
         }
     }
 
-    @ComparisonTest(classes = CalcVariant.class)
+    @ComparisonTest(source = CalcSource.class)
     @DisplayName("DisabledFixture")
     @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention"})
     static class DisabledFixture {
 
         @ParameterizedTest
+        @ComparisonArguments(1)
         @Disabled("skipped leaf")
         @ValueSource(strings = "value")
         void skip(String input, Calc implementation) {
@@ -270,6 +275,7 @@ class AnnotationCompatibilityTest {
         }
 
         @ParameterizedTest
+        @ComparisonArguments(1)
         @Disabled
         @MethodSource("failedSource")
         void failsAtSource(String input, Calc implementation) {
@@ -281,7 +287,7 @@ class AnnotationCompatibilityTest {
         }
     }
 
-    @ComparisonTest(classes = CalcVariant.class)
+    @ComparisonTest(source = CalcSource.class)
     @DisplayName("InvalidConditionFixture")
     @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention"})
     static class InvalidConditionFixture {
@@ -297,7 +303,7 @@ class AnnotationCompatibilityTest {
         }
     }
 
-    @ComparisonTest(classes = CalcVariant.class)
+    @ComparisonTest(source = CalcSource.class)
     @DisplayName("ConditionFixture")
     @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention", "ClassCanBeRecord"})
     static class ConditionFixture {

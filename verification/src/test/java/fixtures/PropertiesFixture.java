@@ -6,7 +6,8 @@ import java.util.List;
 import java.util.stream.IntStream;
 
 import examples.Calc;
-import examples.CalcVariant;
+import examples.CalcSource;
+import org.atpfivt.comparison.api.ComparisonArguments;
 import org.atpfivt.comparison.api.ComparisonTest;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
@@ -20,7 +21,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  * Records what differs between the variants: when @BeforeAll and the argument source run, the order of the leaves,
  * the implementation the constructor receives and what TestInfo reports. Run by VariantPropertiesTest only.
  */
-@ComparisonTest(classes = CalcVariant.class)
+@ComparisonTest(source = CalcSource.class)
 @TestMethodOrder(MethodOrderer.MethodName.class)
 @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention", "ClassCanBeRecord"})
 public class PropertiesFixture {
@@ -44,6 +45,7 @@ public class PropertiesFixture {
     }
 
     @ParameterizedTest
+    @ComparisonArguments(1)
     @MethodSource("numbers")
     void param(int x, Calc calc, TestInfo info) {
         EVENTS.add("param " + x + " " + describe(calc, info));

@@ -1,12 +1,12 @@
 package fixtures;
 
 import examples.Calc;
-import examples.CalcVariant;
+import examples.CalcSource;
 import org.atpfivt.comparison.api.ComparisonTest;
 import org.junit.jupiter.api.Test;
 
 /** Cannot run: the engine needs a subclass. Run by PlatformContractTest only. */
-@ComparisonTest(classes = CalcVariant.class)
+@ComparisonTest(source = CalcSource.class)
 @SuppressWarnings({"JUnitMalformedDeclaration", "NewClassNamingConvention"})
 public final class FinalFixture {
 

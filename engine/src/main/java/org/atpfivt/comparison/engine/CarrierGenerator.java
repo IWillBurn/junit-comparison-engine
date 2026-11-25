@@ -9,6 +9,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import java.util.stream.IntStream;
@@ -51,7 +52,7 @@ import org.junit.platform.commons.support.ReflectionSupport;
  *     @Nested @ParameterizedClass @CsvSource({"2, 3", "4, 5"})
  *     class mul {
  *         mul(int a, int b) { ... } // hold one argument set
- *         @Test @ImplementationLeaf(value = "GOOD", parameterIndex = 0, variantType = CalcVariant.class)
+ *         @Test @ImplementationLeaf(value = "GOOD", variantType = CalcSource.CalcVariant.class)
  *         void GOOD(Calc calc) { MulTest$$Comparison$1.this.mul(a, b, calc); }
  *     }
  * }
@@ -85,13 +86,11 @@ final class CarrierGenerator {
                 .subclass(userClass, ConstructorStrategy.Default.IMITATE_SUPER_CLASS.withInheritedAnnotations())
                 .name(carrierName)
                 .annotateType(CarrierAnnotations.carrier(userClass, model.displayName()));
-        Class<? extends ComparisonSource<?>> sourceType = model.sourceType();
-        ComparisonSource<?> source = sourceType == null ? null : ReflectionSupport.newInstance(sourceType);
+        Class<? extends ComparisonSource<?>> sourceType = Objects.requireNonNull(model.sourceType());
+        ComparisonSource<?> source = ReflectionSupport.newInstance(sourceType);
         carrier = registerExtension(carrier, "$comparisonParameterResolver",
             new VariantParameterResolver(model.implementations(), source));
-        if (source != null) {
-            carrier = registerExtension(carrier, "$comparisonSourceExtension", new ComparisonSourceLifecycle(source));
-        }
+        carrier = registerExtension(carrier, "$comparisonSourceExtension", new ComparisonSourceLifecycle(source));
         // The nested classes need the carrier's type before we can add them to it.
         TypeDescription carrierType = carrier.toTypeDescription();
 
@@ -235,8 +234,7 @@ final class CarrierGenerator {
                     .withField(argumentFields).withAllArguments();
             return withParameters(builder.defineMethod(name, void.class, Visibility.PACKAGE_PRIVATE), leafParameters)
                     .intercept(call)
-                    .annotateMethod(annotations.leaf(order, implementation,
-                        plan.method().implementationIndex() - arguments.size()));
+                    .annotateMethod(annotations.leaf(order, implementation));
         }
 
         private MethodDefinition.ExceptionDefinition<Object> withParameters(

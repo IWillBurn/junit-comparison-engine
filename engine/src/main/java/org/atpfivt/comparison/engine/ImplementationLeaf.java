@@ -22,7 +22,5 @@ public @interface ImplementationLeaf {
 
     String value();
 
-    int parameterIndex();
-
     Class<? extends Variant> variantType();
 }

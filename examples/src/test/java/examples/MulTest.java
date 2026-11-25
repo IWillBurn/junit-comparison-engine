@@ -21,18 +21,20 @@ package examples;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import org.atpfivt.comparison.api.ComparisonArguments;
 import org.atpfivt.comparison.api.ComparisonTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
-@ComparisonTest(classes = CalcVariant.class)
+@ComparisonTest(source = CalcSource.class)
 // The comparison engine supplies the implementation parameter on the generated test leaf.
 @SuppressWarnings("JUnitMalformedDeclaration")
 class MulTest {
 
     // quoteTextArguments = false only shortens the display name to "[1] 2, 3, 6" (JUnit 6 default: "2", "3", "6")
     @ParameterizedTest(quoteTextArguments = false)
+    @ComparisonArguments(3)
     @CsvSource({ "2, 3, 6", "4, 5, 20" })
     void mul(int a, int b, int expected, Calc calc) {
         assertEquals(expected, calc.mul(a, b));
