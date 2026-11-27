@@ -1,0 +1,38 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+      - name: Build and verify
+        run: mvn -B verify --file pom.xml -pl engine,examples,verification
+      - name: Install Graphviz for the documentation diagrams
+        run: sudo apt-get update && sudo apt-get install -y graphviz
+      - name: Build documentation
+        run: mvn -B verify --file pom.xml -pl doc
+      - name: Deploy to GitHub Pages
+        if: success() && github.ref == 'refs/heads/main'
+        uses: crazy-max/ghaction-github-pages@v4
+        with:
+          target_branch: gh-pages
+          build_dir: doc/target/generated-docs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

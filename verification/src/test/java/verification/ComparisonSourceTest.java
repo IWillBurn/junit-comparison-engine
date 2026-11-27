@@ -220,8 +220,8 @@ class ComparisonSourceTest {
         }
 
         @Override
-        public List<Backend> variants() {
-            return List.of(Backend.values());
+        public Class<Backend> variantType() {
+            return Backend.class;
         }
 
         @Override

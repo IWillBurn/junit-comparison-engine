@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -66,9 +67,10 @@ record ComparisonClass(Class<?> testClass, String displayName, Set<TestTag> tags
      * A {@code @Test} or {@code @ParameterizedTest} method, run on every implementation.
      *
      * @param argumentCount the number of leading parameters populated by a parameterized argument source
+     * @param skips variant name → reason for the variants the method skips
      */
     record TestMethod(Method method, String displayName, Set<TestTag> tags, TestSource source, boolean parameterized,
-            int argumentCount) implements Member {
+            int argumentCount, Map<String, String> skips) implements Member {
 
         @Override
         public MemberId id() {
@@ -117,7 +119,8 @@ record ComparisonClass(Class<?> testClass, String displayName, Set<TestTag> tags
             var source = findAnnotation(testClass, ComparisonTest.class).orElseThrow().source();
             List<Implementation> implementations = implementations(source);
             validateVariantNames(implementations);
-            List<Member> members = members(testClass, generator, configuration);
+            List<Member> members = members(testClass, generator, configuration,
+                implementations.isEmpty() ? null : implementations.getFirst().variantType());
             return new ComparisonClass(testClass, displayName, tags, classTemplate, source, implementations, members,
                 null);
         }
@@ -211,12 +214,12 @@ record ComparisonClass(Class<?> testClass, String displayName, Set<TestTag> tags
 
     /** The test methods in Jupiter's order, then the {@code @Nested} classes (unsupported). */
     private static List<Member> members(Class<?> testClass, DisplayNameGenerator generator,
-            ConfigurationParameters configuration) {
+            ConfigurationParameters configuration, @Nullable Class<? extends Variant> variantType) {
         List<Method> methods = ReflectionSupport.findMethods(testClass, ComparisonClass::isTestable,
             HierarchyTraversalMode.TOP_DOWN);
         List<Member> members = new ArrayList<>();
         for (var method : JupiterConventions.orderedMethods(testClass, methods, generator, configuration)) {
-            members.add(member(testClass, method.getMethod(), method.getDisplayName()));
+            members.add(member(testClass, method.getMethod(), method.getDisplayName(), variantType));
         }
         for (Class<?> nested : ReflectionSupport.findNestedClasses(testClass, c -> isAnnotated(c, Nested.class))) {
             String name = nested.getSimpleName();
@@ -232,7 +235,8 @@ record ComparisonClass(Class<?> testClass, String displayName, Set<TestTag> tags
                 || isAnnotated(method, TestFactory.class);
     }
 
-    private static Member member(Class<?> testClass, Method method, String displayName) {
+    private static Member member(Class<?> testClass, Method method, String displayName,
+            @Nullable Class<? extends Variant> variantType) {
         Set<TestTag> tags = JupiterConventions.tags(method);
         TestSource source = MethodSource.from(testClass, method);
         boolean parameterized = isAnnotated(method, ParameterizedTest.class);
@@ -243,7 +247,15 @@ record ComparisonClass(Class<?> testClass, String displayName, Set<TestTag> tags
             return new UnsupportedMember(methodId(method), displayName, legacyMethodName(method),
                 tags, source, reason);
         }
-        return new TestMethod(method, displayName, tags, source, parameterized, argumentCount);
+        Map<String, String> skips;
+        try {
+            skips = SkipAnnotations.read(method, variantType);
+        }
+        catch (IllegalArgumentException e) {
+            return new UnsupportedMember(methodId(method), displayName, legacyMethodName(method),
+                tags, source, e.getMessage());
+        }
+        return new TestMethod(method, displayName, tags, source, parameterized, argumentCount, skips);
     }
 
     private static @Nullable String whyUnsupported(Method method, boolean parameterized, int argumentCount) {
