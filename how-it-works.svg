@@ -1,0 +1,65 @@
+<?xml version='1.0' encoding='UTF-8' standalone='no'?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg height='63pt' preserveAspectRatio='xMidYMid meet' viewBox='0.00 0.00 877.00 63.00' width='877pt' xmlns:xlink='http://www.w3.org/1999/xlink' xmlns='http://www.w3.org/2000/svg'>
+<g class='graph' id='graph0' transform='scale(1 1) rotate(0) translate(4 58.6)'>
+<title>how_it_works</title>
+
+<g class='node' id='node1'>
+<title>runner</title>
+<path d='M95.25,-54.6C95.25,-54.6 12,-54.6 12,-54.6 6,-54.6 0,-48.6 0,-42.6 0,-42.6 0,-12 0,-12 0,-6 6,0 12,0 12,0 95.25,0 95.25,0 101.25,0 107.25,-6 107.25,-12 107.25,-12 107.25,-42.6 107.25,-42.6 107.25,-48.6 101.25,-54.6 95.25,-54.6' fill='#f2f2f2' stroke='#555555'/>
+<text font-family='Helvetica,sans-Serif' font-size='11.00' font-weight='bold' xml:space='preserve' text-anchor='start' x='31.88' y='-34.35'>Runner</text>
+<text font-family='Helvetica,sans-Serif' font-size='11.00' xml:space='preserve' text-anchor='start' x='18' y='-12.35'>Selects tests</text>
+</g>
+
+<g class='node' id='node2'>
+<title>discovery</title>
+<path d='M273.75,-54.6C273.75,-54.6 155.25,-54.6 155.25,-54.6 149.25,-54.6 143.25,-48.6 143.25,-42.6 143.25,-42.6 143.25,-12 143.25,-12 143.25,-6 149.25,0 155.25,0 155.25,0 273.75,0 273.75,0 279.75,0 285.75,-6 285.75,-12 285.75,-12 285.75,-42.6 285.75,-42.6 285.75,-48.6 279.75,-54.6 273.75,-54.6' fill='#f2f2f2' stroke='#555555'/>
+<text font-family='Helvetica,sans-Serif' font-size='11.00' font-weight='bold' xml:space='preserve' text-anchor='start' x='183.75' y='-34.35'>Discovery</text>
+<text font-family='Helvetica,sans-Serif' font-size='11.00' xml:space='preserve' text-anchor='start' x='161.25' y='-12.35'>Builds the test tree</text>
+</g>
+
+<g class='edge' id='edge1'>
+<title>runner&#45;&gt;discovery</title>
+<path d='M107.53,-27.3C115.97,-27.3 124.86,-27.3 133.76,-27.3' fill='none' stroke='#555555'/>
+<polygon fill='#555555' points='133.5,-30.1 141.5,-27.3 133.5,-24.5 133.5,-30.1' stroke='#555555'/>
+</g>
+
+<g class='node' id='node3'>
+<title>generation</title>
+<path d='M461.25,-54.6C461.25,-54.6 333.75,-54.6 333.75,-54.6 327.75,-54.6 321.75,-48.6 321.75,-42.6 321.75,-42.6 321.75,-12 321.75,-12 321.75,-6 327.75,0 333.75,0 333.75,0 461.25,0 461.25,0 467.25,0 473.25,-6 473.25,-12 473.25,-12 473.25,-42.6 473.25,-42.6 473.25,-48.6 467.25,-54.6 461.25,-54.6' fill='#f2f2f2' stroke='#555555'/>
+<text font-family='Helvetica,sans-Serif' font-size='11.00' font-weight='bold' xml:space='preserve' text-anchor='start' x='363.38' y='-34.35'>Generation</text>
+<text font-family='Helvetica,sans-Serif' font-size='11.00' xml:space='preserve' text-anchor='start' x='339.75' y='-12.35'>Creates nested tests</text>
+</g>
+
+<g class='edge' id='edge2'>
+<title>discovery&#45;&gt;generation</title>
+<path d='M286,-27.3C294.53,-27.3 303.3,-27.3 312.01,-27.3' fill='none' stroke='#555555'/>
+<polygon fill='#555555' points='311.89,-30.1 319.89,-27.3 311.89,-24.5 311.89,-30.1' stroke='#555555'/>
+</g>
+
+<g class='node' id='node4'>
+<title>jupiter</title>
+<path d='M659.25,-54.6C659.25,-54.6 521.25,-54.6 521.25,-54.6 515.25,-54.6 509.25,-48.6 509.25,-42.6 509.25,-42.6 509.25,-12 509.25,-12 509.25,-6 515.25,0 521.25,0 521.25,0 659.25,0 659.25,0 665.25,0 671.25,-6 671.25,-12 671.25,-12 671.25,-42.6 671.25,-42.6 671.25,-48.6 665.25,-54.6 659.25,-54.6' fill='#f2f2f2' stroke='#555555'/>
+<text font-family='Helvetica,sans-Serif' font-size='11.00' font-weight='bold' xml:space='preserve' text-anchor='start' x='570' y='-34.35'>Jupiter</text>
+<text font-family='Helvetica,sans-Serif' font-size='11.00' xml:space='preserve' text-anchor='start' x='527.25' y='-12.35'>Runs selected variants</text>
+</g>
+
+<g class='edge' id='edge3'>
+<title>generation&#45;&gt;jupiter</title>
+<path d='M473.62,-27.3C482.11,-27.3 490.84,-27.3 499.5,-27.3' fill='none' stroke='#555555'/>
+<polygon fill='#555555' points='499.35,-30.1 507.35,-27.3 499.35,-24.5 499.35,-30.1' stroke='#555555'/>
+</g>
+
+<g class='node' id='node5'>
+<title>reporting</title>
+<path d='M857.25,-54.6C857.25,-54.6 719.25,-54.6 719.25,-54.6 713.25,-54.6 707.25,-48.6 707.25,-42.6 707.25,-42.6 707.25,-12 707.25,-12 707.25,-6 713.25,0 719.25,0 719.25,0 857.25,0 857.25,0 863.25,0 869.25,-6 869.25,-12 869.25,-12 869.25,-42.6 869.25,-42.6 869.25,-48.6 863.25,-54.6 857.25,-54.6' fill='#f2f2f2' stroke='#555555'/>
+<text font-family='Helvetica,sans-Serif' font-size='11.00' font-weight='bold' xml:space='preserve' text-anchor='start' x='758.25' y='-34.35'>Reporting</text>
+<text font-family='Helvetica,sans-Serif' font-size='11.00' xml:space='preserve' text-anchor='start' x='725.25' y='-12.35'>Maps results to source</text>
+</g>
+
+<g class='edge' id='edge4'>
+<title>jupiter&#45;&gt;reporting</title>
+<path d='M671.54,-27.3C680.08,-27.3 688.8,-27.3 697.44,-27.3' fill='none' stroke='#555555'/>
+<polygon fill='#555555' points='697.26,-30.1 705.26,-27.3 697.26,-24.5 697.26,-30.1' stroke='#555555'/>
+</g>
+</g>
+</svg>
