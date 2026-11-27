@@ -71,7 +71,7 @@ final class CarrierAnnotations {
 
     CarrierAnnotations(Class<?> userClass, Method method, String displayName, boolean parameterized,
             Map<String, String> skips) {
-        skippedVariants = AnnotationSupport.isAnnotated(method, Disabled.class) ? Map.of() : skips;
+        skippedVariants = skips;
         onNestedClass = new ArrayList<>(List.of(
             annotation(Nested.class).build(),
             annotation(DisplayName.class).define("value", displayName).build(),

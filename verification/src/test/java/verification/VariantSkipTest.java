@@ -46,6 +46,7 @@ class VariantSkipTest {
         assertEquals(2, count(tree, "Via proxy ↷ the proxy rejects strings"), tree);
         assertEquals(1, count(tree, "Via proxy ↷ skipped by @SkipOne"), tree);
         assertTrue(tree.contains("Via proxy ↷ whole method disabled"), tree);
+        assertEquals(2, count(tree, "↷ disabled by the author despite an invalid skip"), tree);
         assertFalse(tree.contains("✘"), tree);
         assertEquals(List.of(), run.violations);
     }
@@ -120,6 +121,13 @@ class VariantSkipTest {
         @Disabled("whole method disabled")
         @SkipBackend(value = Backend.PROXY, description = "never reported: @Disabled wins")
         void disabled() {
+            throw new AssertionError("disabled test was invoked");
+        }
+
+        @Test
+        @Disabled("disabled by the author despite an invalid skip")
+        @Skip("UNKNOWN")
+        void disabledWithUnknownSkip() {
             throw new AssertionError("disabled test was invoked");
         }
     }

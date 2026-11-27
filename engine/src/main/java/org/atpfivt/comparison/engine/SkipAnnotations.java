@@ -1,5 +1,7 @@
 package org.atpfivt.comparison.engine;
 
+import static org.junit.platform.commons.support.AnnotationSupport.isAnnotated;
+
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.util.Arrays;
@@ -11,6 +13,7 @@ import java.util.Optional;
 import org.atpfivt.comparison.api.SkipMarker;
 import org.atpfivt.comparison.api.Variant;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.Disabled;
 import org.junit.platform.commons.support.ReflectionSupport;
 
 /** Reads the {@link SkipMarker} annotations on a test method: variant name → skip reason. */
@@ -26,6 +29,9 @@ final class SkipAnnotations {
      * @throws IllegalArgumentException for an annotation violating the {@link SkipMarker} contract
      */
     static Map<String, String> read(Method method, @Nullable Class<? extends Variant> variantType) {
+        if (isAnnotated(method, Disabled.class)) {
+            return Map.of();
+        }
         Map<String, String> skips = new LinkedHashMap<>();
         for (Annotation declared : method.getDeclaredAnnotations()) {
             if (isSkip(declared.annotationType())) {
