@@ -1,0 +1,534 @@
+= JUnit Comparison Engine
+:source-highlighter: rouge
+:toc: left
+:toclevels: 3
+:icons: font
+:sectanchors:
+:sectlinks:
+:repo: https://github.com/IWillBurn/junit-comparison-engine
+:src: {repo}/blob/main
+:junit-pr: https://github.com/junit-team/junit-framework/pull/6127
+
+Version {project-version}, built against JUnit {junit-version}.
+
+
+== Motivation
+
+=== Comparison and oracle testing
+
+_Comparison testing_ runs the same test against several _comparison subjects aka variants_, such as
+
+* API implementations,
+* database backends,
+* a real server and its test double.
+
+The suite defines a contract shared by all _variants_. Grouping results by behavior lets readers compare variants for each test and input. 
+
+Use cases include:
+
+* Compatible API implementations.
+* Products that support several database backends.
+* Test doubles that must behave like the real thing.
+
+One of the subjects can be an _oracle_, a reference implementation that is known to be correct. Test-driven development against an oracle then has two steps:
+
+. Write a test that passes against the oracle and fails against your implementation.
+. Make it pass against both subjects.
+
+Comparison subjects always form the innermost level of the test tree. Each argument set of a `@ParameterizedTest` becomes a container with one test per subject. Comparing two `SearchTree` implementations, `BinarySearchTree` and `TreeSetSearchTree`, produces a report like this:
+
+[subs="+macros"]
+----
+containsAddedKey(int, SearchTree) icon:check[role=green]
+├─ [1] key = -7 icon:check[role=green]
+│  ├─ BinarySearchTree icon:check[role=green]
+│  └─ TreeSetSearchTree icon:check[role=green]
+└─ [2] key = 42 icon:check[role=green]
+   ├─ BinarySearchTree icon:check[role=green]
+   └─ TreeSetSearchTree icon:times[role=red] expected: <true> but was: <false>
+----
+
+
+
+=== Why existing Jupiter features were not enough
+
+[%collapsible]
+=====
+
+**Subjects as `@ParameterizedTest` arguments**
+
+The Cartesian product of inputs and subjects can be generated in a `@MethodSource`:
+
+[source,java]
+----
+@ParameterizedTest
+@MethodSource("keysAndTrees")   // (-7, Binary), (-7, TreeSet), (42, Binary), (42, TreeSet)
+void containsAddedKey(int key, Supplier<SearchTree> trees) { ... }
+----
+
+[subs="+macros"]
+----
+containsAddedKey(int, Supplier) icon:check[role=green]
+├─ [1] key = -7, trees = BinarySearchTree icon:check[role=green]
+├─ [2] key = -7, trees = TreeSetSearchTree icon:check[role=green]
+├─ [3] key = 42, trees = BinarySearchTree icon:check[role=green]
+└─ [4] key = 42, trees = TreeSetSearchTree icon:check[role=green]
+----
+
+* *Flat results:* readers scan _n × m_ siblings to distinguish failures by input from failures by subject.
+* *Manual composition:* each test must combine inputs and subjects rather than use `@ValueSource`, `@CsvSource`, or other sources unchanged. Each test must also repeat the subject list.
+* *Tests without inputs still require parameterization* just to receive a subject.
+* *No single place to declare subjects* for a class or suite.
+
+**Subjects as `@ParameterizedClass` arguments**
+
+[source,java]
+----
+@ParameterizedClass
+@MethodSource("trees")
+class ImplementationsAsClassParameterTests {
+    @Parameter Supplier<SearchTree> trees;
+    @Test void sizeIsZero() { ... }
+    @ParameterizedTest @ValueSource(ints = { -7, 42 }) void containsAddedKey(int key) { ... }
+}
+----
+
+[subs="+macros"]
+----
+ImplementationsAsClassParameterTests icon:check[role=green]
+├─ [1] trees = BinarySearchTree icon:check[role=green]
+│  ├─ containsAddedKey(int) icon:check[role=green]
+│  │  ├─ [1] key = -7 icon:check[role=green]
+│  │  └─ [2] key = 42 icon:check[role=green]
+│  └─ sizeIsZero() icon:check[role=green]
+└─ [2] trees = TreeSetSearchTree icon:check[role=green]
+   ├─ containsAddedKey(int) icon:check[role=green]
+   │  ├─ [1] key = -7 icon:check[role=green]
+   │  └─ [2] key = 42 icon:check[role=green]
+   └─ sizeIsZero() icon:check[role=green]
+----
+
+This approach is close (and technically the most correct one for the comparison testing), but *the hierarchy is inverted:* `subject → test → input` scatters each behavior's outcomes across subjects
+
+A CI build matrix has the same reporting problem: results are separated by subject rather than grouped by test invocation.
+
+**Subjects from a second `TestTemplateInvocationContextProvider`**
+
+Registering another `TestTemplateInvocationContextProvider` alongside `@ParameterizedTest` _chains_ the providers' invocation streams rather than multiplying them:
+
+[source,java]
+----
+@ExtendWith(Trees.class)   // a TestTemplateInvocationContextProvider supplying SearchTree instances
+class TwoInvocationProvidersTests {
+   @ParameterizedTest @ValueSource(ints = { -7, 42 })
+   void containsAddedKey(int key, SearchTree tree) { ... }
+}
+----
+
+[subs="+macros"]
+----
+containsAddedKey(int, SearchTree) icon:check[role=green]
+├─ [1] BinarySearchTree icon:times[role=red] No ParameterResolver registered for parameter [int key] ...
+├─ [2] TreeSetSearchTree icon:times[role=red] No ParameterResolver registered for parameter [int key] ...
+├─ [3] key = -7 icon:times[role=red] No ParameterResolver registered for parameter [SearchTree tree] ...
+└─ [4] key = 42 icon:times[role=red] No ParameterResolver registered for parameter [SearchTree tree] ...
+----
+
+Each invocation receives either an input or a subject, never both. Invocations are leaves; no public extension point can add children beneath them.
+
+**Dynamic tests**
+
+A `@TestFactory` can build the required hierarchy using `DynamicContainer` and `DynamicTest`, but requires rewriting existing tests as factories. The goal is to preserve ordinary test methods.
+=====
+
+=== What this engine does
+
+The engine is a JUnit Platform `TestEngine` with the id `comparison-tests`. It discovers classes annotated with `@ComparisonTest`, generates a Jupiter test class for each of them at run time, lets the real Jupiter engine execute the generated class, and maps the results back onto the original methods. Ordinary `@Test` and `@ParameterizedTest` methods stay as they are; the only additions are one class annotation, one source class that lists the subjects, and an implementation parameter on each test method.
+
+[graphviz,how-it-works,svg,opts=inline]
+....
+digraph how_it_works {
+    rankdir=LR
+    bgcolor=transparent
+    node [shape=box, style="rounded,filled", fillcolor="#f2f2f2", color="#555555", fontname="Helvetica", fontsize=11, margin="0.25,0.15"]
+    edge [color="#555555", arrowsize=0.8]
+
+    runner     [label=<<b>Runner</b><br/><br/>Selects tests>]
+    discovery  [label=<<b>Discovery</b><br/><br/>Builds the test tree>]
+    generation [label=<<b>Generation</b><br/><br/>Creates nested tests>]
+    jupiter    [label=<<b>Jupiter</b><br/><br/>Runs selected variants>]
+    reporting  [label=<<b>Reporting</b><br/><br/>Maps results to source>]
+
+    runner -> discovery -> generation -> jupiter -> reporting
+}
+....
+
+== Example
+
+A comparison class is an ordinary Jupiter class with one extra annotation and an implementation parameter on each test. The class below compares two `SearchTree` implementations, `BinarySearchTree` and `TreeSetSearchTree`, and combines a parameterized class, parameterized tests, a plain test, and a skipped variant. The enum of variants, the `ComparisonSource` that lists them, and the project's own `@Skip` annotation are left out here; the later sections show how to write them.
+
+[source,java]
+----
+@ComparisonTest(source = SearchTreeImplementations.class) // <1>
+@ParameterizedClass                                        // <2>
+@ValueSource(ints = { 10, 1000 })
+class SearchTreeTest {
+    @Parameter
+    int keyRange;
+
+    @Test                                                  // <3>
+    void sizeIsZero(SearchTree tree) {
+        assertEquals(0, tree.size());
+    }
+
+    @ParameterizedTest                                     // <4>
+    @ValueSource(ints = { -7, 42 })
+    @ComparisonArguments(1)
+    void containsAddedKey(int key, SearchTree tree) {
+        tree.add(key % keyRange);
+        assertTrue(tree.contains(key % keyRange));
+    }
+
+    @ParameterizedTest                                     // <5>
+    @ValueSource(ints = { 1, 2 })
+    @ComparisonArguments(1)
+    void matchesTreeSet(int seed, SearchTree tree) {
+        Random random = new Random(seed);
+        TreeSet<Integer> expected = new TreeSet<>();
+        for (int i = 0; i < 100; i++) {
+            int key = random.nextInt(keyRange);
+            assertEquals(expected.add(key), tree.add(key));
+        }
+        assertEquals(List.copyOf(expected), tree.toSortedList());
+    }
+
+    @Test
+    @Skip(value = TREE_SET, description = "TreeSet rejects null keys") // <6>
+    void acceptsNullKey(SearchTree tree) {
+        assertTrue(tree.add(null));
+        assertTrue(tree.contains(null));
+    }
+}
+----
+<1> The source names the variants and supplies the `SearchTree` parameter for each of them.
+<2> A parameterized class adds its level above the tests, as in plain Jupiter.
+<3> A plain test receives the implementation as its last parameter and runs once per variant.
+<4> A parameterized test declares with `@ComparisonArguments` how many leading parameters its argument source supplies; the implementation parameter follows them.
+<5> A seeded parameterized test compares each tree with a `TreeSet` oracle. It takes the place of a `@RepeatedTest`, which the engine does not run.
+<6> The project's own `@Skip`, typed with the variant enum, disables one variant of one test and gives the reason.
+
+The test tree of an actual run (`ConsoleLauncher --details=tree`; Jupiter orders the methods):
+
+[subs="+macros"]
+----
+SearchTreeTest icon:check[role=green]
+├─ [1] keyRange = 10 icon:check[role=green]
+│  ├─ containsAddedKey(int, SearchTree) icon:check[role=green]
+│  │  ├─ [1] -7 icon:check[role=green]
+│  │  │  ├─ BinarySearchTree icon:check[role=green]
+│  │  │  └─ TreeSetSearchTree icon:check[role=green]
+│  │  └─ [2] 42 icon:check[role=green]
+│  │     ├─ BinarySearchTree icon:check[role=green]
+│  │     └─ TreeSetSearchTree icon:check[role=green]
+│  ├─ matchesTreeSet(int, SearchTree) icon:check[role=green]
+│  │  ├─ [1] 1 icon:check[role=green]
+│  │  │  ├─ BinarySearchTree icon:check[role=green]
+│  │  │  └─ TreeSetSearchTree icon:check[role=green]
+│  │  └─ [2] 2 icon:check[role=green]
+│  │     ├─ BinarySearchTree icon:check[role=green]
+│  │     └─ TreeSetSearchTree icon:check[role=green]
+│  ├─ acceptsNullKey(SearchTree) icon:check[role=green]
+│  │  ├─ BinarySearchTree icon:check[role=green]
+│  │  └─ TreeSetSearchTree icon:ban[role=gray] TreeSet rejects null keys
+│  └─ sizeIsZero(SearchTree) icon:check[role=green]
+│     ├─ BinarySearchTree icon:check[role=green]
+│     └─ TreeSetSearchTree icon:check[role=green]
+└─ [2] keyRange = 1000 icon:check[role=green]
+   ├─ containsAddedKey(int, SearchTree) icon:check[role=green]
+   │  ├─ [1] -7 icon:check[role=green]
+   │  │  ├─ BinarySearchTree icon:check[role=green]
+   │  │  └─ TreeSetSearchTree icon:check[role=green]
+   │  └─ [2] 42 icon:check[role=green]
+   │     ├─ BinarySearchTree icon:check[role=green]
+   │     └─ TreeSetSearchTree icon:check[role=green]
+   ├─ matchesTreeSet(int, SearchTree) icon:check[role=green]
+   │  ├─ [1] 1 icon:check[role=green]
+   │  │  ├─ BinarySearchTree icon:check[role=green]
+   │  │  └─ TreeSetSearchTree icon:check[role=green]
+   │  └─ [2] 2 icon:check[role=green]
+   │     ├─ BinarySearchTree icon:check[role=green]
+   │     └─ TreeSetSearchTree icon:check[role=green]
+   ├─ acceptsNullKey(SearchTree) icon:check[role=green]
+   │  ├─ BinarySearchTree icon:check[role=green]
+   │  └─ TreeSetSearchTree icon:ban[role=gray] TreeSet rejects null keys
+   └─ sizeIsZero(SearchTree) icon:check[role=green]
+      ├─ BinarySearchTree icon:check[role=green]
+      └─ TreeSetSearchTree icon:check[role=green]
+----
+
+* *`@Test`:* `test → variant`.
+* *`@ParameterizedTest`:* `test → arguments → variant`.
+* *`@ParameterizedClass`:* adds its level above the test as usual, and the variants stay innermost.
+* *A skipped variant* stays in the tree with its reason, so the report still shows that the variant exists.
+
+== Quick start
+
+You need JDK 21 and Maven 3.9 or later.
+
+[source,sh]
+----
+git clone https://github.com/IWillBurn/junit-comparison-engine.git
+cd junit-comparison-engine
+mvn clean verify
+----
+
+The multiplication example runs two input rows against the `GOOD` and `BUGGY` variants returned by `CalcSource` ({src}/examples/src/test/java/examples/MulTest.java[MulTest.java], {src}/examples/src/test/java/examples/CalcSource.java[CalcSource.java]).
+
+[source,java]
+----
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import org.atpfivt.comparison.api.ComparisonArguments;
+import org.atpfivt.comparison.api.ComparisonTest;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+
+@ComparisonTest(source = CalcSource.class)
+class MulTest {
+    @ParameterizedTest(quoteTextArguments = false)
+    @ComparisonArguments(3)
+    @CsvSource({ "2, 3, 6", "4, 5, 20" })
+    void mul(int a, int b, int expected, Calc calc) {
+        assertEquals(expected, calc.mul(a, b));
+    }
+}
+----
+
+Each input row has a separate result for each implementation. The example deliberately fails on the second row for `Buggy`, and the verification suite checks that failure.
+
+[subs="+macros"]
+----
+mul(int, int, int, Calc)
+├── [1] 2, 3, 6
+│   ├── Good  icon:check[role=green]
+│   └── Buggy icon:check[role=green]
+└── [2] 4, 5, 20
+    ├── Good  icon:check[role=green]
+    └── Buggy icon:times[role=red] expected: <20> but was: <21>
+----
+
+You can also open the root `pom.xml` in IntelliJ IDEA and run `MulTest` from the gutter.
+
+== Use in a Maven project
+
+The current version is a source-built snapshot. Install it in your local Maven repository from the checkout.
+
+[source,sh]
+----
+mvn -pl engine -am install
+----
+
+Add the engine as a test dependency. Use the JUnit BOM to keep the Jupiter and Platform modules on *{junit-version}*, the version used by this project.
+
+[source,xml,subs="attributes+"]
+----
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>org.junit</groupId>
+            <artifactId>junit-bom</artifactId>
+            <version>{junit-version}</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
+<dependencies>
+    <dependency>
+        <groupId>org.atpfivt.comparison</groupId>
+        <artifactId>comparison-engine</artifactId>
+        <version>{project-version}</version>
+        <scope>test</scope>
+    </dependency>
+</dependencies>
+----
+
+Place your comparison class under `src/test/java` and run `mvn test` with Maven Surefire. This project uses Surefire 3.5.4. The engine is discovered automatically on the test classpath.
+
+== Writing comparison tests
+
+=== The comparison class
+
+`@ComparisonTest` is a class annotation in `org.atpfivt.comparison.api`. Its `source` names a `ComparisonSource<V>` implementation that selects the active enum variants. The test class must allow subclassing, so it must not be `final`, because the engine generates its Jupiter test class as a subclass.
+
+The annotation has no Jupiter meta-annotations. Classes carrying it are run by the `comparison-tests` engine; the ordinary Jupiter engine ignores them.
+
+=== Variants and the source
+
+Variants are constants of an enum that implements `Variant`. The constant name identifies the variant in test selectors; `testName()` is the label shown in the test tree, and `isOracle()` marks a reference implementation.
+
+[source,java]
+----
+public enum CalcVariant implements Variant {
+    GOOD("Good", Calc.Good::new),
+    BUGGY("Buggy", Calc.Buggy::new);
+    ...
+    @Override
+    public String testName() {
+        return testName;
+    }
+}
+----
+
+A `ComparisonSource<V>` has a no-argument constructor and three responsibilities ({src}/engine/src/main/java/org/atpfivt/comparison/api/ComparisonSource.java[ComparisonSource.java]):
+
+`variantType()`:: The enum class.
+`variants()`:: The active variants in discovery order. By default, all constants of the enum. Keep construction and this method free of resource startup: the engine calls them during discovery.
+`parameterResolvers(V variant)`:: The Jupiter `ParameterResolver` instances that supply the implementation parameters for one test invocation of that variant. The engine resolves the variant enum constant itself.
+
+[source,java]
+----
+public final class CalcSource implements ComparisonSource<CalcSource.CalcVariant> {
+    @Override
+    public Class<CalcVariant> variantType() {
+        return CalcVariant.class;
+    }
+
+    @Override
+    public List<ParameterResolver> parameterResolvers(CalcVariant variant) {
+        return List.of(new TypeBasedParameterResolver<Calc>() {
+            @Override
+            public Calc resolveParameter(ParameterContext parameter, ExtensionContext context) {
+                return context.getStore(NAMESPACE).computeIfAbsent(Calc.class, key -> variant.create.get(), Calc.class);
+            }
+        });
+    }
+}
+----
+
+=== Method parameters
+
+The engine supplies the current variant to a test parameter typed as the enum, as `Variant`, or as an interface of your own that extends `Variant` and that the enum implements. A variant's parameter resolvers supply any parameters they support. Standard Jupiter resolvers, such as the one for `TestInfo`, are also available. See {src}/examples/src/test/java/examples/VariantTest.java[VariantTest.java].
+
+[source,java]
+----
+@Test
+void mulFourByFive(CalcVariant variant, Calc calc) {
+    assertEquals(variant == BUGGY ? 21 : 20, calc.mul(4, 5));   // a known difference, pinned
+}
+
+@Test
+void reportsTheVariant(Variant variant, TestInfo info) {
+    assertEquals(variant.testName(), info.getDisplayName());
+}
+----
+
+The same parameters are available to the test constructor under the default `PER_METHOD` lifecycle, and to `@BeforeEach` and `@AfterEach` methods.
+
+For `@ParameterizedTest`, declare the argument-set parameters first, followed by the parameters supplied by the engine or other Jupiter resolvers. `@ComparisonArguments(n)` declares the number of leading argument-set parameters.
+
+[source,java]
+----
+@ParameterizedTest
+@ComparisonArguments(3)
+@CsvSource({ "2, 3, 6", "4, 5, 20" })
+void mul(int a, int b, int expected, Calc calc, TestInfo info) { /* ... */ }
+----
+
+The argument source runs once per method for each invocation of the enclosing test class. Every implementation in an input row receives the same source arguments. Local `@MethodSource` methods and `@FieldSource` fields must be static. Method-level parameter resolver extensions can supply parameters to a `@MethodSource` factory.
+
+=== Skipping variants
+
+To skip a variant on one method, use the library's `@Skip` with the constant's name, or declare a type-safe annotation for your enum once and mark it with `@SkipMarker`. The engine reads the annotation's `value()` and, by convention, an optional `description()`. See {src}/examples/src/test/java/examples/Skip.java[Skip.java] and {src}/examples/src/test/java/examples/SkipTest.java[SkipTest.java].
+
+[source,java]
+----
+@Test
+@Skip("ORACLE")                                            // org.atpfivt.comparison.api.Skip, by name
+@Skip(value = "MYSQL", description = "this type is buggy in MySQL")
+void jsonColumn(Database db) { ... }
+----
+
+A project's own annotation, typed with its enum:
+
+[source,java]
+----
+@SkipMarker
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+@Repeatable(Skip.List.class)
+public @interface Skip {
+    Database[] value();
+    String description() default "";
+
+    @Target(ElementType.METHOD)
+    @Retention(RetentionPolicy.RUNTIME)
+    @interface List { Skip[] value(); }
+}
+----
+
+[source,java]
+----
+@Test
+@Skip(value = ORACLE, description = "this type is not supported on Oracle")
+@Skip(value = MYSQL, description = "this type is buggy in MySQL")
+void jsonColumn(Database db) { ... }
+----
+
+The contract the engine reads reflectively:
+
+* `value()` may return one constant or an array, typed with the source's enum or named as strings. An unknown name or a constant of another enum invalidates the method, and the tree shows the reason.
+* `description()` is reported as the skip reason. Without one the reason names the annotation, for example `skipped by @Skip`.
+* The generated leaf is `@Disabled` with that reason, so runners report it as skipped and the source never creates the variant's parameters. A method that is itself `@Disabled` ignores its skips.
+* Java only repeats an annotation through a container, so the nested `List` is needed for one description per variant, and a repeatable annotation and its enum must be `public`, because the JDK creates the container's proxy outside their package. An array `value()` with a shared description needs no container.
+
+== Lifecycle
+
+The engine calls the source's no-argument constructor and reads `variants()` during discovery. Execution creates a fresh source instance and routes parameter requests to the variant's resolvers.
+
+A source is a Jupiter `Extension` and can implement callbacks:
+
+* `BeforeAllCallback` and `AfterAllCallback` for the comparison class;
+* the class-template invocation callbacks for each invocation of a parameterized class;
+* `BeforeEachCallback` and `AfterEachCallback` for individual tests.
+
+Use the Jupiter store to own closeable resources: register shared `AutoCloseable` resources in the store for Jupiter to close. `ComparisonContext.classContext(context)` locates the owning class or class-template invocation from a test or its resolver, and `ComparisonContext.variant(context)` returns the active variant of a test invocation.
+
+Under the default `PER_METHOD` lifecycle, the test constructor can receive the variant and its arguments. `@BeforeEach`, the test, and `@AfterEach` also have access to them. Under `PER_CLASS`, the constructor runs at class scope. Variant-specific parameters are available in leaf methods and per-test callbacks.
+
+See the {src}/verification/src/test/java/verification/ComparisonSourceTest.java[source lifecycle verification] for an example of per-leaf arguments backed by a shared resource, and {src}/examples/src/test/java/examples/LifecycleTest.java[LifecycleTest.java] for the callback order.
+
+== Jupiter annotations and extensions
+
+`@Test`, `@ParameterizedTest`, `@ParameterizedClass`, and `@TestInstance` are supported. Execution annotations such as `@Disabled`, `@Tag`, `@Timeout`, and `@ExtendWith` apply to the generated implementation tests. Composed test annotations and instance-based `@EnabledIf` and `@DisabledIf` methods are covered by the {src}/verification/src/test/java/verification/AnnotationCompatibilityTest.java[compatibility tests].
+
+A comparison class reports a skip with a reason for `@Nested` classes, `@TestFactory` methods, `@RepeatedTest` methods, and custom `@TestTemplate` methods.
+
+`TestInfo.getDisplayName()` returns `Variant.testName()`. Jupiter metadata exposed through `TestInfo` and `ExtensionContext` can identify generated classes and methods. Runners receive the original method as the test source for navigation.
+
+== Selection and reruns
+
+The test tree follows `class → method → argument set → variant`. An ordinary `@Test` places the variants directly under the method. A `@ParameterizedClass` adds its class invocation above the method.
+
+The Launcher can select classes, methods, and individual nodes by `UniqueId`. A selection that combines all invocations of a parameterized class with individual invocations can execute additional leaves internally. The engine reports the selected nodes to the outer runner. With a parameterized class, method tags become visible when Jupiter materializes its invocations, so a discovery-time inclusion filter can depend on tags on the class itself.
+
+== How it works
+
+. *Runner.* The IDE, Surefire, or the Launcher selects tests.
+. *Discovery.* The engine finds `@ComparisonTest` classes and builds the test tree: class, method, argument set, variant.
+. *Generation.* For each class it generates a subclass with one nested Jupiter class per method and one test per variant.
+. *Jupiter.* The real Jupiter engine runs the selected variants, with its own parameter sources, lifecycle callbacks, and extensions.
+. *Reporting.* The engine maps the results back onto the original test methods.
+
+Jupiter handles parameter sources, lifecycle callbacks, and extensions on the generated tests. The engine reports results against the original test methods so runners can navigate to the test and select individual implementations. Extensions that inspect test metadata can see the generated classes and methods.
+
+== Runtime compatibility
+
+The build targets JDK 21. The verification suite uses JUnit Jupiter and Platform {junit-version}. The engine uses Jupiter's generated-test metadata and identifier format for reruns, so use the verified version when integrating it. The engine generates test classes in the package of the user test, and a named Java module must open that package for the runtime lookup.
+
+== Project layout and contributing
+
+The {src}/engine[`engine`] module contains the API and the JUnit Platform engine. The {src}/examples[`examples`] module demonstrates behavior, {src}/verification[`verification`] checks test trees, lifecycle, extension compatibility, and reruns through the Launcher API, and {src}/doc[`doc`] builds this guide.
+
+Run `mvn clean verify` before submitting a change. For a bug report, include the JDK and JUnit versions, the runner, and a minimal test that reproduces the behavior: {repo}/issues[GitHub Issues].

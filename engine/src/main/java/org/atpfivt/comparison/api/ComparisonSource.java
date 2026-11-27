@@ -12,8 +12,12 @@ import org.junit.jupiter.api.extension.ParameterResolver;
 @API(status = EXPERIMENTAL, since = "0.1")
 public interface ComparisonSource<V extends Enum<V> & Variant> extends Extension {
 
+    Class<V> variantType();
+
     /** Lists active variants in discovery order. Keep construction and this method free of resource startup. */
-    List<V> variants();
+    default List<V> variants() {
+        return List.of(variantType().getEnumConstants());
+    }
 
     /** Supplies the parameter resolvers for one test invocation. The engine also resolves the variant enum itself. */
     List<ParameterResolver> parameterResolvers(V variant);

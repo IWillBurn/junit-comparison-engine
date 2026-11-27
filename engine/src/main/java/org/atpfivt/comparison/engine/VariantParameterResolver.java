@@ -49,14 +49,14 @@ record VariantParameterResolver(Map<String, Variant> variants, ComparisonSource<
             return false; // The generated nested constructor takes Jupiter's argument set.
         }
         var marker = leaf.getAnnotation(ImplementationLeaf.class);
-        return parameter.getParameter().getType() == marker.variantType()
+        return isVariantParameter(parameter.getParameter().getType(), marker.variantType())
                 || selectResolver(parameter, context, marker.value());
     }
 
     @Override
     public @Nullable Object resolveParameter(ParameterContext parameter, ExtensionContext context) {
         var marker = Objects.requireNonNull(context.getRequiredTestMethod().getAnnotation(ImplementationLeaf.class));
-        if (parameter.getParameter().getType() == marker.variantType()) {
+        if (isVariantParameter(parameter.getParameter().getType(), marker.variantType())) {
             return variants.get(marker.value());
         }
         var selected = context.getStore(NAMESPACE).remove(parameter.getParameter(), SelectedResolver.class);
@@ -64,6 +64,11 @@ record VariantParameterResolver(Map<String, Variant> variants, ComparisonSource<
             throw new ParameterResolutionException("No resolver for " + parameter.getParameter());
         }
         return selected.delegate().resolveParameter(parameter, context);
+    }
+
+    /** The enum itself, {@link Variant}, or an interface between them that the enum implements. */
+    private static boolean isVariantParameter(Class<?> type, Class<? extends Variant> variantType) {
+        return type == variantType || (Variant.class.isAssignableFrom(type) && type.isAssignableFrom(variantType));
     }
 
     private boolean selectResolver(ParameterContext parameter, ExtensionContext context, String name) {

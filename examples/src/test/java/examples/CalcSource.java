@@ -37,8 +37,8 @@ public final class CalcSource implements ComparisonSource<CalcSource.CalcVariant
     }
 
     @Override
-    public List<CalcVariant> variants() {
-        return List.of(CalcVariant.values());
+    public Class<CalcVariant> variantType() {
+        return CalcVariant.class;
     }
 
     @Override

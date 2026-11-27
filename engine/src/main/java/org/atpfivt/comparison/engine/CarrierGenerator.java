@@ -173,7 +173,8 @@ final class CarrierGenerator {
             this.argumentFields = IntStream.range(0, argumentCount).mapToObj(i -> "argument" + i).toArray(String[]::new);
             this.namedParameters = declaredParameters.length > 0 && declaredParameters[0].isNamePresent();
             this.leafParameters = parameters.subList(argumentCount, parameters.size());
-            this.annotations = new CarrierAnnotations(userClass, method, test.displayName(), test.parameterized());
+            this.annotations = new CarrierAnnotations(userClass, method, test.displayName(), test.parameterized(),
+                test.skips());
         }
 
         UnloadedNestedClass write(String name, int order) {
